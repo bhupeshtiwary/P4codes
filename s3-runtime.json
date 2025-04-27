@@ -1,5 +1,68 @@
 {
-  "register_entries": [
-    { "register": "switch_id_reg", "index": 0, "value": 3 }
+  "target": "bmv2",
+  "p4info": "build/int_ecmp.p4.p4info.txtpb",
+    "bmv2_json": "build/int_ecmp.json",
+    "register_entries":[
+	{
+	    "register":"MyIngress.switch_id_reg",
+	    "index":0,
+	    "value":3
+	}
+    ],
+    
+  "table_entries": [
+    {
+      "table": "MyIngress.ecmp_group_table",
+	"match":{
+	    "hdr.ipv4.dstAddr":["10.0.2.2",32]
+	},
+	"action_name": "MyIngress.set_group",
+	"action_params": {
+		"gid":1
+	    }
+	    
+    },
+    {
+      "table": "MyIngress.ecmp_select_table",
+      "match": {
+          "meta.group_id":1,
+	  "meta.hash":0
+      },
+      "action_name": "MyIngress.set_port",
+      "action_params": {
+        "port": 2
+      }
+    },
+      {
+      "table": "MyIngress.ecmp_select_table",
+      "match": {
+          "meta.group_id":1,
+	  "meta.hash":1
+      },
+      "action_name": "MyIngress.set_port",
+      "action_params": {
+        "port": 2
+      }
+      },
+      {
+      "table": "MyIngress.mac_rewrite",
+      "match": {
+        "standard_metadata.egress_spec": 2
+      },
+      "action_name": "MyIngress.rewrite_mac",
+	  "action_params": {
+	      "dst":"aa:bb:cc:00:04:03",
+	      "src":"aa:bb:cc:00:03:02"
+	  }
+      }, 
+
+      {
+      "table": "MyIngress.int_table",
+      "match": {
+        "hdr.ipv4.dstAddr": ["10.0.2.2", 32]
+      },
+      "action_name": "MyIngress.enable_int",
+	"action_params": {}
+    }
   ]
 }

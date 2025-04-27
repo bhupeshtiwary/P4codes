@@ -1,47 +1,61 @@
 {
-  "hosts": {
-    "h1": {
-      "ip": "10.0.1.1/24",
-      "mac": "08:00:00:00:01:11",
-      "commands": [
-        "ip route add default via 10.0.1.10 dev eth0",
-        "arp -i eth0 -s 10.0.1.10 08:00:00:00:01:00"
-      ]
+    "hosts": {
+        "h1": {
+            "ip": "10.0.1.1/24",
+            "mac": "08:00:00:00:01:11",
+	    "commands":[
+		"route add default gw 10.0.1.10 dev eth0",
+		"arp -i eth0 -s 10.0.1.10 08:00:00:00:01:00"
+		]
+        },
+        "h2": {
+            "ip": "10.0.2.2/24",
+            "mac": "08:00:00:00:02:22",
+	    "commands":[
+		"route add default gw 10.0.2.20 dev eth0",
+		"arp -i eth0 -s 10.0.2.20 08:00:00:00:02:00"
+		]
+        }
     },
-    "h2": {
-      "ip": "10.0.2.2/24",
-      "mac": "08:00:00:00:02:22",
-      "commands": [
-        "ip route add default via 10.0.2.20 dev eth0",
-        "arp -i eth0 -s 10.0.2.20 08:00:00:00:02:00"
-      ]
-    }
-  },
-  "switches": {
-    "s1": {
-      "runtime_json": "s1-runtime.json"
+    "switches": {
+        "s1": {
+	    
+	    "runtime_json":"s1-runtime.json"},
+        "s2": {
+
+	    "runtime_json":"s2-runtime.json"},
+        "s3": {
+	    
+	    "runtime_json":"s3-runtime.json"},
+	"s4": {
+	    
+	    "runtime_json":"s4-runtime.json"}
     },
-    "s2": {
-      "runtime_json": "s2-runtime.json"
-    },
-    "s3": {
-      "runtime_json": "s3-runtime.json"
-    },
-    "s4": {
-      "runtime_json": "s4-runtime.json"
-    }
-  },
-  "links": [
-    ["h1", "s1"],
-    ["s1", "s2"],
-    ["s1", "s3"],
-    ["s2", "s4"],
-    ["s3", "s4"],
-    ["s4", "h2"]
-  ],
-  "controller": {
-    "target": "bmv2",
-    "p4info": "build/int_ecmp.p4.p4info.txt",
-    "bmv2_json": "build/int_ecmp.json"
-  }
+    "links": [
+        [
+            "h1",
+            "s1-p1"
+        ],
+        [
+            "s1-p2",
+            "s2-p1"
+        ],
+        [
+            "s1-p3",
+            "s3-p1"
+        ],
+        [
+            "s2-p2",
+            "s4-p2"
+        ],
+        [
+            "h2",
+            "s4-p1"
+        ],
+        [
+            "s4-p3",
+            "s3-p2"
+        ]
+    ]
 }
+
