@@ -4,7 +4,7 @@
     "bmv2_json": "build/int_ecmp.json",
     "register_entries":[
 	{
-	    "register":"MyIngress.switch_id_reg",
+	    "register":"switch_id_reg",
 	    "index":0,
 	    "value":2
 	}
