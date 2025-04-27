@@ -86,7 +86,7 @@ parser MyParser(packet_in packet,
     state parse_int_header {
 	
 	packet.extract(hdr.inst);
-	transistion accept;
+	transition accept;
 		
     }
 
