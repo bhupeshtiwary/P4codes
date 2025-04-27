@@ -178,7 +178,7 @@ control MyIngress(inout headers hdr,
             if (meta.do_int == 1 && meta.int_index < 4) {
                 hdr.inst.push_front(1); // Push a new INT header to the front
                 hdr.inst[0].setValid();
-                hdr.inst[0].hop_count = meta.int_index + 1; // Set hop count
+                hdr.inst[0].hop_count = (bit<8>)(meta.int_index + 1); // Set hop count
                 hdr.inst[0].switch_id = meta.switch_id;
                 hdr.inst[0].ingress_timestamp = standard_metadata.ingress_global_timestamp;
                 hdr.inst[0].nextProto = 0; // End of INT headers
