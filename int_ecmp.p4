@@ -75,7 +75,7 @@ parser MyParser(packet_in packet,
 
     state parse_ipv4 {
         packet.extract(hdr.ipv4);
-        transition select(hdr.ipv4.protodol){
+        transition select(hdr.ipv4.protocol){
 
 		0xFE: parse_int_header;
 		default: accept;
