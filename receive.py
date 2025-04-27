@@ -27,7 +27,7 @@ def parse_int(pkt):
 
     if len(raw)<int_off+6:
         return
-    int_hdr=raw[int_off:int_off+6]
+    int_hdr=raw[int_off:int_off+8]
     hop_count=int_hdr[0]
     switch_id=int_hdr[1]
     ts= int.from_bytes(int_hdr[2:],"big")
