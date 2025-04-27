@@ -3,16 +3,13 @@
 #include <v1model.p4>
 
 const bit<16> TYPE_IPV4 = 0x800;
+const bit<16> TYPE_INT = 0x1212;
 
 /*************************************************************************
 *********************** H E A D E R S  ***********************************
 *************************************************************************/
 typedef bit<48> macAddr_t;
 typedef bit<32> ip4Addr_t;
-
-
-const bit<16> TYPE_INT = 0x1212;
-
 
 header ethernet_t {
     macAddr_t dstAddr;
@@ -34,9 +31,10 @@ header ipv4_t {
     ip4Addr_t srcAddr;
     ip4Addr_t dstAddr;
 }
-header int_t{
+
+header int_t {
     bit<8> hop_count;
-    bit<8>  switch_id;    
+    bit<8> switch_id;
     bit<48> ingress_timestamp;
     bit<16> nextProto;
 }
@@ -44,19 +42,18 @@ header int_t{
 struct metadata {
     bit<8> group_id;
     bit<1> hash;
-    bit<1> do_int;   
+    bit<1> do_int;
     bit<8> switch_id;
-    bit<2> int_index;
+    bit<2> int_index; // Tracks the number of INT headers
 }
 
 struct headers {
     ethernet_t   ethernet;
     ipv4_t       ipv4;
-    int_t[4] inst;
+    int_t[4]     inst; // Stack of up to 4 INT headers
 }
 
-register<bit<8>>(1)switch_id_reg;
-
+register<bit<8>>(1) switch_id_reg;
 
 /*************************************************************************
 *********************** P A R S E R  ***********************************
@@ -68,14 +65,6 @@ parser MyParser(packet_in packet,
                 inout standard_metadata_t standard_metadata) {
 
     state start {
-	packet.extract(hdr.ethernet);
-        transition select(hdr.ethernet.etherType){
-		TYPE_IPV4: parse_ipv4;
-		default: accept;
-	}
-    }
-
-    state parse_ethernet {
         packet.extract(hdr.ethernet);
         transition select(hdr.ethernet.etherType) {
             TYPE_IPV4: parse_ipv4;
@@ -85,104 +74,103 @@ parser MyParser(packet_in packet,
 
     state parse_ipv4 {
         packet.extract(hdr.ipv4);
-        transition select(packet.lookahead<bit<16>>()){
-		TYPE_INT: parse_int;
-		default: accept;
-	}
+        meta.int_index = 0; // Initialize INT header count
+        transition select(packet.lookahead<bit<16>>()) {
+            TYPE_INT: parse_int;
+            default: accept;
+        }
     }
 
-    state parse_int{
-	packet.extract(hdr.inst.next);
-	transition select(hdr.inst.next.nextProto){
-		TYPE_INT: parse_int;
-		default: accept;
-		
-	}	
-
-	
+    state parse_int {
+        packet.extract(hdr.inst.next);
+        meta.int_index = meta.int_index + 1; // Increment for each INT header
+        transition select(hdr.inst.next.nextProto) {
+            TYPE_INT: parse_int;
+            default: accept;
+        }
     }
-
 }
-control MyVerifyChecksum(inout headers hdr, inout metadata meta){
-    apply{}
-    }
+
+/*************************************************************************
+**************  I N G R E S S   P R O C E S S I N G   *******************
+*************************************************************************/
+
 control MyIngress(inout headers hdr,
                   inout metadata meta,
                   inout standard_metadata_t standard_metadata) {
 
-    action load_switch_id(){
-	switch_id_reg.read(meta.switch_id,0);
-    }
-    
-    action set_group(bit<8> gid){
-	meta.group_id=gid;
+    action load_switch_id() {
+        switch_id_reg.read(meta.switch_id, 0);
     }
 
-    action compute_hash(){
-	bit<32> hv=(hdr.ipv4.srcAddr^hdr.ipv4.dstAddr);
-	meta.hash=(bit<1>)(hv&1);
+    action set_group(bit<8> gid) {
+        meta.group_id = gid;
     }
-    action set_port(bit<9> port)
-    {
-	standard_metadata.egress_spec=port;
-    }
-    action enable_int()
-    {
-	meta.do_int=1;
-    }
-    action rewrite_mac(bit<48>dst,bit<48>src)
-    {
-	hdr.ethernet.dstAddr=dst;
-	hdr.ethernet.srcAddr=src;
-    }
-    
-    table ecmp_group_table{
-	key={
-	    hdr.ipv4.dstAddr:lpm;
-	}
-	actions={set_group;}
-	size=1024;
-    }
-    table ecmp_select_table{
-	key={
-	    meta.group_id:exact;
-	    meta.hash:exact;
-	}
-	actions={set_port;}
-	size=1024;
-    }
-    table int_table{
-	key={hdr.ipv4.dstAddr:lpm;}
-	actions={enable_int;}
-	size=1024;
-    }
-    table mac_rewrite{
-	key={standard_metadata.egress_spec:exact;}
-	actions={rewrite_mac;}
-	size=16;
-    }
-    
 
-    
+    action compute_hash() {
+        bit<32> hv = (hdr.ipv4.srcAddr ^ hdr.ipv4.dstAddr);
+        meta.hash = (bit<1>)(hv & 1);
+    }
+
+    action set_port(bit<9> port) {
+        standard_metadata.egress_spec = port;
+    }
+
+    action enable_int() {
+        meta.do_int = 1;
+    }
+
+    action rewrite_mac(bit<48> dst, bit<48> src) {
+        hdr.ethernet.dstAddr = dst;
+        hdr.ethernet.srcAddr = src;
+    }
+
+    table ecmp_group_table {
+        key = {
+            hdr.ipv4.dstAddr: lpm;
+        }
+        actions = { set_group; }
+        size = 1024;
+    }
+
+    table ecmp_select_table {
+        key = {
+            meta.group_id: exact;
+            meta.hash: exact;
+        }
+        actions = { set_port; }
+        size = 1024;
+    }
+
+    table int_table {
+        key = { hdr.ipv4.dstAddr: lpm; }
+        actions = { enable_int; }
+        size = 1024;
+    }
+
+    table mac_rewrite {
+        key = { standard_metadata.egress_spec: exact; }
+        actions = { rewrite_mac; }
+        size = 16;
+    }
+
     apply {
-	
-	load_switch_id();
+        load_switch_id();
         if (hdr.ipv4.isValid()) {
             ecmp_group_table.apply();
-	    compute_hash();
-	    ecmp_select_table.apply();
-	    mac_rewrite.apply();
-	    int_table.apply();
-	    if(meta.do_int==1){
-		hdr.inst.push_front(1);
-		hdr.inst[0].setValid();
-		hdr.inst[0].hop_count=hdr.inst.hop_count+1;
-		hdr.inst[0].switch_id=meta.switch_id;
-		hdr.inst[0].ingress_timestamp=standard_metadata.ingress_global_timestamp;
-	    	hdr.inst[0].nextProto = TYPE_IPV4
-		meta.int_index = meta.int_index + 1;
-	    }
-
+            compute_hash();
+            ecmp_select_table.apply();
+            mac_rewrite.apply();
+            int_table.apply();
+            if (meta.do_int == 1 && meta.int_index < 4) {
+                hdr.inst.push_front(1); // Push a new INT header to the front
+                hdr.inst[0].setValid();
+                hdr.inst[0].hop_count = meta.int_index + 1; // Set hop count
+                hdr.inst[0].switch_id = meta.switch_id;
+                hdr.inst[0].ingress_timestamp = standard_metadata.ingress_global_timestamp;
+                hdr.inst[0].nextProto = 0; // End of INT headers
+                meta.int_index = meta.int_index + 1;
+            }
         }
     }
 }
@@ -194,17 +182,17 @@ control MyIngress(inout headers hdr,
 control MyEgress(inout headers hdr,
                  inout metadata meta,
                  inout standard_metadata_t standard_metadata) {
-    apply {  }
+    apply { }
 }
 
 /*************************************************************************
 *************   C H E C K S U M    C O M P U T A T I O N   **************
 *************************************************************************/
 
-control MyComputeChecksum(inout headers  hdr, inout metadata meta) {
-     apply {
+control MyComputeChecksum(inout headers hdr, inout metadata meta) {
+    apply {
         update_checksum(
-        hdr.ipv4.isValid(),
+            hdr.ipv4.isValid(),
             { hdr.ipv4.version,
               hdr.ipv4.ihl,
               hdr.ipv4.diffserv,
@@ -217,7 +205,8 @@ control MyComputeChecksum(inout headers  hdr, inout metadata meta) {
               hdr.ipv4.srcAddr,
               hdr.ipv4.dstAddr },
             hdr.ipv4.hdrChecksum,
-            HashAlgorithm.csum16);
+            HashAlgorithm.csum16
+        );
     }
 }
 
@@ -229,8 +218,7 @@ control MyDeparser(packet_out packet, in headers hdr) {
     apply {
         packet.emit(hdr.ethernet);
         packet.emit(hdr.ipv4);
-	packet.emit(hdr.inst);
-	
+        packet.emit(hdr.inst); // Emit the entire INT header stack
     }
 }
 
@@ -241,8 +229,8 @@ control MyDeparser(packet_out packet, in headers hdr) {
 V1Switch(
     MyParser(),
     MyVerifyChecksum(),
-MyIngress(),
-MyEgress(),
-MyComputeChecksum(),
-MyDeparser()
+    MyIngress(),
+    MyEgress(),
+    MyComputeChecksum(),
+    MyDeparser()
 ) main;
