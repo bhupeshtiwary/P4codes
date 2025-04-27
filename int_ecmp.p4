@@ -77,16 +77,6 @@ parser MyParser(packet_in packet,
         packet.extract(hdr.ipv4);
         transition accept;
     }
-	
-    state parse_int {
-    	packet.extract(hdr.inst.next);
-    	meta.int_index = meta.int_index + 1;  // Increment count of existing headers
-    	transition select(hdr.inst.last.nextProto) {
-        	TYPE_INT: parse_int;    // More INT headers
-        	TYPE_IPV4: parse_ipv4;  // Transition to parse IPv4 after INT
-        	default: accept;
-    	}	
-    }
 
 }
 control MyVerifyChecksum(inout headers hdr, inout metadata meta){
@@ -115,7 +105,6 @@ control MyIngress(inout headers hdr,
     action enable_int()
     {
 	meta.do_int=1;
-	meta.int_index = hdr.inst.size < 4)
     }
     action rewrite_mac(bit<48>dst,bit<48>src)
     {
