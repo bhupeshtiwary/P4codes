@@ -23,15 +23,15 @@ def parse_int(pkt):
     raw=bytes(pkt)
     eth_len=14
     ihl=(raw[14]&0x0F)*4
-    int_off=eth_len+ihl
-
-    if len(raw)<int_off+6:
-        return
-    int_hdr=raw[int_off:int_off+6]
-    hop_count=int_hdr[0]
-    switch_id=int_hdr[1]
-    ts= int.from_bytes(int_hdr[2:],"big")
+    int_off = eth_len + ihl
+    int_size = 8
+    while int_off + int_size <= len(raw):
+    int_hdr=raw[int_off:int_off + int_size]
+    hop_count = int_hdr[0]
+    switch_id = int_hdr[1]
+    ts= int.from_bytes(int_hdr[2:8],"big")
     print(f"INT -> hop_count={hop_count}, switch_id={switch_id}, ts={ts}")
+    int_off += int_size
     
 
 

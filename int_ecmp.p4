@@ -10,6 +10,10 @@ const bit<16> TYPE_IPV4 = 0x800;
 typedef bit<48> macAddr_t;
 typedef bit<32> ip4Addr_t;
 
+
+const bit<16> TYPE_INT = 0x1212;
+
+
 header ethernet_t {
     macAddr_t dstAddr;
     macAddr_t srcAddr;
@@ -34,6 +38,7 @@ header int_t{
     bit<8> hop_count;
     bit<8>  switch_id;    
     bit<48> ingress_timestamp;
+    bit<16> nextProto;
 }
 
 struct metadata {
@@ -41,12 +46,13 @@ struct metadata {
     bit<1> hash;
     bit<1> do_int;   
     bit<8> switch_id;
+    bit<2> int_index;
 }
 
 struct headers {
     ethernet_t   ethernet;
     ipv4_t       ipv4;
-    int_t inst;
+    int_t[4] inst;
 }
 
 register<bit<8>>(1)switch_id_reg;
@@ -62,7 +68,11 @@ parser MyParser(packet_in packet,
                 inout standard_metadata_t standard_metadata) {
 
     state start {
-        transition parse_ethernet;
+	packet.extract(hdr.ethernet);
+        transition select(hdr.ethernet.etherType){
+		TYPE_IPV4: parse_ipv4;
+		default: accept;
+	}
     }
 
     state parse_ethernet {
@@ -75,7 +85,21 @@ parser MyParser(packet_in packet,
 
     state parse_ipv4 {
         packet.extract(hdr.ipv4);
-        transition accept;
+        transition select(packet.lookahead<bit<16>>()){
+		TYPE_INT: parse_int;
+		default: accept;
+	}
+    }
+
+    state parse_int{
+	packet.extract(hdr.inst.next);
+	transition select(hdr.inst.next.nextProto){
+		TYPE_INT: parse_int;
+		default: accept;
+		
+	}	
+
+	
     }
 
 }
@@ -150,10 +174,13 @@ control MyIngress(inout headers hdr,
 	    mac_rewrite.apply();
 	    int_table.apply();
 	    if(meta.do_int==1){
-		hdr.inst.setValid();
-		hdr.inst.hop_count=hdr.inst.hop_count+1;
-		hdr.inst.switch_id=meta.switch_id;
-		hdr.inst.ingress_timestamp=standard_metadata.ingress_global_timestamp;
+		hdr.inst.push_front(1);
+		hdr.inst[0].setValid();
+		hdr.inst[0].hop_count=hdr.inst.hop_count+1;
+		hdr.inst[0].switch_id=meta.switch_id;
+		hdr.inst[0].ingress_timestamp=standard_metadata.ingress_global_timestamp;
+	    	hdr.inst[0].nextProto = TYPE_IPV4
+		meta.int_index = meta.int_index + 1;
 	    }
 
         }
