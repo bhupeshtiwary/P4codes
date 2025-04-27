@@ -1,0 +1,5 @@
+{
+  "register_entries": [
+    { "register": "switch_id_reg", "index": 0, "value": 4 }
+  ]
+}
