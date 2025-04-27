@@ -44,7 +44,7 @@ struct metadata {
     bit<1> hash;
     bit<1> do_int;
     bit<8> switch_id;
-    bit<2> int_index; // Tracks the number of INT headers
+    bit<3> int_index; // Tracks the number of INT headers
 }
 
 struct headers {
@@ -68,15 +68,17 @@ parser MyParser(packet_in packet,
         packet.extract(hdr.ethernet);
         transition select(hdr.ethernet.etherType) {
             TYPE_IPV4: parse_ipv4;
+	    TYPE_INT: parse_int;
             default: accept;
         }
     }
 
     state parse_ipv4 {
         packet.extract(hdr.ipv4);
-        meta.int_index = 0; // Initialize INT header count
+        meta.int_index = meta.int_index + 1; // Initialize INT header count
         transition select(packet.lookahead<bit<16>>()) {
             TYPE_INT: parse_int;
+	    TYPE_IPV4: parse_ipv4;
             default: accept;
         }
     }
@@ -84,7 +86,7 @@ parser MyParser(packet_in packet,
     state parse_int {
         packet.extract(hdr.inst.next);
         meta.int_index = meta.int_index + 1; // Increment for each INT header
-        transition select(hdr.inst.next.nextProto) {
+        transition select(hdr.inst.last.nextProto) {
             TYPE_INT: parse_int;
             default: accept;
         }
@@ -177,11 +179,14 @@ control MyIngress(inout headers hdr,
             int_table.apply();
             if (meta.do_int == 1 && meta.int_index < 4) {
                 hdr.inst.push_front(1); // Push a new INT header to the front
-                hdr.inst[0].setValid();
+                hdr.ethernet.etherType = TYPE_INT;
+		hdr.inst[0].setValid();
+		
                 hdr.inst[0].hop_count = (bit<8>)(meta.int_index + 1); // Set hop count
                 hdr.inst[0].switch_id = meta.switch_id;
                 hdr.inst[0].ingress_timestamp = standard_metadata.ingress_global_timestamp;
-                hdr.inst[0].nextProto = 0; // End of INT headers
+                hdr.inst[0].nextProto = hdr.ethernet.etherType; // End of INT headers
+		hdr.ethernet.etherType=TYPE_INT;
                 meta.int_index = meta.int_index + 1;
             }
         }
@@ -230,8 +235,8 @@ control MyComputeChecksum(inout headers hdr, inout metadata meta) {
 control MyDeparser(packet_out packet, in headers hdr) {
     apply {
         packet.emit(hdr.ethernet);
-        packet.emit(hdr.ipv4);
         packet.emit(hdr.inst); // Emit the entire INT header stack
+        packet.emit(hdr.ipv4);
     }
 }
 
