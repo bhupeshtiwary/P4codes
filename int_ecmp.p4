@@ -142,41 +142,86 @@ control MyIngress(inout headers hdr,
 
     apply {
         if (!hdr.ipv4.isValid()) return;
+        // Reset INT flag
         meta.do_int = 0;
-        // 1) Preserve existing
+
+        // 1) Preserve existing slots
         meta.old_hop1 = hdr.inst1.hop_count; meta.old_sw1 = hdr.inst1.switch_id; meta.old_ts1 = hdr.inst1.ingress_timestamp;
         meta.old_hop2 = hdr.inst2.hop_count; meta.old_sw2 = hdr.inst2.switch_id; meta.old_ts2 = hdr.inst2.ingress_timestamp;
         meta.old_hop3 = hdr.inst3.hop_count; meta.old_sw3 = hdr.inst3.switch_id; meta.old_ts3 = hdr.inst3.ingress_timestamp;
         meta.old_hop4 = hdr.inst4.hop_count; meta.old_sw4 = hdr.inst4.switch_id; meta.old_ts4 = hdr.inst4.ingress_timestamp;
-        // 2) Clear all
+
+        // 2) Clear all slots
         hdr.inst1.hop_count=0; hdr.inst1.switch_id=0; hdr.inst1.ingress_timestamp=0;
         hdr.inst2.hop_count=0; hdr.inst2.switch_id=0; hdr.inst2.ingress_timestamp=0;
         hdr.inst3.hop_count=0; hdr.inst3.switch_id=0; hdr.inst3.ingress_timestamp=0;
         hdr.inst4.hop_count=0; hdr.inst4.switch_id=0; hdr.inst4.ingress_timestamp=0;
-        // 3) Restore prev & calc next_idx
+
+        // 3) Restore previous hops and compute next_idx
         meta.next_idx = 0;
-        if (meta.old_hop1 != 0) { hdr.inst1.hop_count=meta.old_hop1; hdr.inst1.switch_id=meta.old_sw1; hdr.inst1.ingress_timestamp=meta.old_ts1; meta.next_idx=1; }
-        if (meta.old_hop2 != 0) { hdr.inst2.hop_count=meta.old_hop2; hdr.inst2.switch_id=meta.old_sw2; hdr.inst2.ingress_timestamp=meta.old_ts2; meta.next_idx=2; }
-        if (meta.old_hop3 != 0) { hdr.inst3.hop_count=meta.old_hop3; hdr.inst3.switch_id=meta.old_sw3; hdr.inst3.ingress_timestamp=meta.old_ts3; meta.next_idx=3; }
-        if (meta.old_hop4 != 0) { hdr.inst4.hop_count=meta.old_hop4; hdr.inst4.switch_id=meta.old_sw4; hdr.inst4.ingress_timestamp=meta.old_ts4; meta.next_idx=4; }
-        // ECMP
-        ecmp_group_table.apply(); compute_hash(); ecmp_select_table.apply();
-        // INT
+        if (meta.old_hop1 != 0) {
+            hdr.inst1.setValid();
+            hdr.inst1.hop_count = meta.old_hop1;
+            hdr.inst1.switch_id = meta.old_sw1;
+            hdr.inst1.ingress_timestamp = meta.old_ts1;
+            meta.next_idx = 1;
+        }
+        if (meta.old_hop2 != 0) {
+            hdr.inst2.setValid();
+            hdr.inst2.hop_count = meta.old_hop2;
+            hdr.inst2.switch_id = meta.old_sw2;
+            hdr.inst2.ingress_timestamp = meta.old_ts2;
+            meta.next_idx = 2;
+        }
+        if (meta.old_hop3 != 0) {
+            hdr.inst3.setValid();
+            hdr.inst3.hop_count = meta.old_hop3;
+            hdr.inst3.switch_id = meta.old_sw3;
+            hdr.inst3.ingress_timestamp = meta.old_ts3;
+            meta.next_idx = 3;
+        }
+        if (meta.old_hop4 != 0) {
+            hdr.inst4.setValid();
+            hdr.inst4.hop_count = meta.old_hop4;
+            hdr.inst4.switch_id = meta.old_sw4;
+            hdr.inst4.ingress_timestamp = meta.old_ts4;
+            meta.next_idx = 4;
+        }
+
+        // 4) ECMP forward + MAC rewrite
+        ecmp_group_table.apply();
+        compute_hash();
+        ecmp_select_table.apply();
+
+        // 5) Enable INT for this hop
         int_table.apply();
-        // 4) Stamp new
+
+        // 6) Stamp new slot if space remains
         if (meta.do_int == 1 && meta.next_idx < 4) {
             bit<8> idx = meta.next_idx;
             bit<8> hop = idx + 1;
             if (idx == 0) {
-                hdr.inst1.hop_count=hop; hdr.inst1.switch_id=meta.switch_id; hdr.inst1.ingress_timestamp=standard_metadata.ingress_global_timestamp;
+                hdr.inst1.setValid();
+                hdr.inst1.hop_count = hop;
+                hdr.inst1.switch_id = meta.switch_id;
+                hdr.inst1.ingress_timestamp = standard_metadata.ingress_global_timestamp;
             } else if (idx == 1) {
-                hdr.inst2.hop_count=hop; hdr.inst2.switch_id=meta.switch_id; hdr.inst2.ingress_timestamp=standard_metadata.ingress_global_timestamp;
+                hdr.inst2.setValid();
+                hdr.inst2.hop_count = hop;
+                hdr.inst2.switch_id = meta.switch_id;
+                hdr.inst2.ingress_timestamp = standard_metadata.ingress_global_timestamp;
             } else if (idx == 2) {
-                hdr.inst3.hop_count=hop; hdr.inst3.switch_id=meta.switch_id; hdr.inst3.ingress_timestamp=standard_metadata.ingress_global_timestamp;
+                hdr.inst3.setValid();
+                hdr.inst3.hop_count = hop;
+                hdr.inst3.switch_id = meta.switch_id;
+                hdr.inst3.ingress_timestamp = standard_metadata.ingress_global_timestamp;
             } else {
-                hdr.inst4.hop_count=hop; hdr.inst4.switch_id=meta.switch_id; hdr.inst4.ingress_timestamp=standard_metadata.ingress_global_timestamp;
+                hdr.inst4.setValid();
+                hdr.inst4.hop_count = hop;
+                hdr.inst4.switch_id = meta.switch_id;
+                hdr.inst4.ingress_timestamp = standard_metadata.ingress_global_timestamp;
             }
-            // zero trailing
+            // Zero any trailing slots so parser stops
             if (meta.next_idx < 3) { hdr.inst4.hop_count=0; hdr.inst4.switch_id=0; hdr.inst4.ingress_timestamp=0; }
             if (meta.next_idx < 2) { hdr.inst3.hop_count=0; hdr.inst3.switch_id=0; hdr.inst3.ingress_timestamp=0; }
             if (meta.next_idx < 1) { hdr.inst2.hop_count=0; hdr.inst2.switch_id=0; hdr.inst2.ingress_timestamp=0; }
