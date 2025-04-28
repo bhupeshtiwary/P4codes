@@ -75,19 +75,7 @@ parser MyParser(packet_in packet,
 
     state parse_ipv4 {
         packet.extract(hdr.ipv4);
-        transition select(hdr.ipv4.protocol){
-
-		0xFE: parse_int_header;
-		default: accept;
-    	}
-	
-    }
-	
-    state parse_int_header {
-	
-	packet.extract(hdr.inst);
-	transition accept;
-		
+        transition accept;
     }
 
 }
@@ -117,7 +105,6 @@ control MyIngress(inout headers hdr,
     action enable_int()
     {
 	meta.do_int=1;
-	hdr.ipv4.protocol = 0xFE;
     }
     action rewrite_mac(bit<48>dst,bit<48>src)
     {
@@ -164,9 +151,9 @@ control MyIngress(inout headers hdr,
 	    int_table.apply();
 	    if(meta.do_int==1){
 		hdr.inst.setValid();
-		hdr.inst.hop_count = hdr.inst.hop_count + 1;
-		hdr.inst.switch_id = meta.switch_id;
-		hdr.inst.ingress_timestamp = standard_metadata.ingress_global_timestamp;
+		hdr.inst.hop_count=hdr.inst.hop_count+1;
+		hdr.inst.switch_id=meta.switch_id;
+		hdr.inst.ingress_timestamp=standard_metadata.ingress_global_timestamp;
 	    }
 
         }
