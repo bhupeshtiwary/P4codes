@@ -34,7 +34,7 @@ Deliverables:
 - Report
 
 
-OUTPUT:
+OLD_OUTPUT from previous versions of the ocde:
 
 p4@p4:~/a19/P4codes$ make build
 mkdir -p build pcaps logs
@@ -170,12 +170,152 @@ mininet>
 
 xterm h2 terminal
 
-shown in the image thats given
+NEW_OUPUT: basically the current version
+
+p4@p4:~/a21/P4codes$ make build
+mkdir -p build pcaps logs
+p4c-bm2-ss --p4v 16 --p4runtime-files build/int_ecmp.p4.p4info.txtpb -o build/int_ecmp.json int_ecmp.p4
+p4@p4:~/a21/P4codes$ make run
+mkdir -p build pcaps logs
+p4c-bm2-ss --p4v 16 --p4runtime-files build/int_ecmp.p4.p4info.txtpb -o build/int_ecmp.json int_ecmp.p4
+sudo python3 ../../utils/run_exercise.py -t topology.json -j build/int_ecmp.json -b simple_switch_grpc
+Reading topology file.
+Building mininet topology.
+simple_switch_grpc -i 1@s1-eth1 -i 2@s1-eth2 -i 3@s1-eth3 --pcap /home/p4/a21/P4codes/pcaps --nanolog ipc:///tmp/bm-0-log.ipc --device-id 0 build/int_ecmp.json --log-console --thrift-port 9090 -- --grpc-server-addr 0.0.0.0:50051
+
+simple_switch_grpc -i 1@s2-eth1 -i 2@s2-eth2 --pcap /home/p4/a21/P4codes/pcaps --nanolog ipc:///tmp/bm-1-log.ipc --device-id 1 build/int_ecmp.json --log-console --thrift-port 9091 -- --grpc-server-addr 0.0.0.0:50052
+
+simple_switch_grpc -i 1@s3-eth1 -i 2@s3-eth2 --pcap /home/p4/a21/P4codes/pcaps --nanolog ipc:///tmp/bm-2-log.ipc --device-id 2 build/int_ecmp.json --log-console --thrift-port 9092 -- --grpc-server-addr 0.0.0.0:50053
+
+simple_switch_grpc -i 1@s4-eth1 -i 2@s4-eth2 -i 3@s4-eth3 --pcap /home/p4/a21/P4codes/pcaps --nanolog ipc:///tmp/bm-3-log.ipc --device-id 3 build/int_ecmp.json --log-console --thrift-port 9093 -- --grpc-server-addr 0.0.0.0:50054
+
+Configuring switch s1 using P4Runtime with file s1-runtime.json
+ - Using P4Info file build/int_ecmp.p4.p4info.txtpb...
+ - Connecting to P4Runtime server on 127.0.0.1:50051 (bmv2)...
+ - Setting pipeline config (build/int_ecmp.json)...
+ - Inserting 6 table entries...
+ - MyIngress.mac_rewrite: standard_metadata.egress_spec=2 => MyIngress.rewrite_mac(dst=aa:bb:cc:00:02:01, src=aa:bb:cc:00:01:02)
+ - MyIngress.mac_rewrite: standard_metadata.egress_spec=3 => MyIngress.rewrite_mac(dst=aa:bb:cc:00:03:01, src=aa:bb:cc:00:01:03)
+ - MyIngress.ecmp_group_table: hdr.ipv4.dstAddr=['10.0.2.2', 32] => MyIngress.set_group(gid=1)
+ - MyIngress.ecmp_select_table: meta.group_id=1, meta.hash=0 => MyIngress.set_port(port=2)
+ - MyIngress.ecmp_select_table: meta.group_id=1, meta.hash=1 => MyIngress.set_port(port=3)
+ - MyIngress.int_table: hdr.ipv4.dstAddr=['10.0.2.2', 32] => MyIngress.enable_int(id=1)
+Configuring switch s2 using P4Runtime with file s2-runtime.json
+ - Using P4Info file build/int_ecmp.p4.p4info.txtpb...
+ - Connecting to P4Runtime server on 127.0.0.1:50052 (bmv2)...
+ - Setting pipeline config (build/int_ecmp.json)...
+ - Inserting 5 table entries...
+ - MyIngress.ecmp_group_table: hdr.ipv4.dstAddr=['10.0.2.2', 32] => MyIngress.set_group(gid=1)
+ - MyIngress.ecmp_select_table: meta.group_id=1, meta.hash=0 => MyIngress.set_port(port=2)
+ - MyIngress.ecmp_select_table: meta.group_id=1, meta.hash=1 => MyIngress.set_port(port=2)
+ - MyIngress.int_table: hdr.ipv4.dstAddr=['10.0.2.2', 32] => MyIngress.enable_int(id=2)
+ - MyIngress.mac_rewrite: standard_metadata.egress_spec=2 => MyIngress.rewrite_mac(dst=aa:bb:cc:00:04:02, src=aa:bb:cc:00:02:02)
+Configuring switch s3 using P4Runtime with file s3-runtime.json
+ - Using P4Info file build/int_ecmp.p4.p4info.txtpb...
+ - Connecting to P4Runtime server on 127.0.0.1:50053 (bmv2)...
+ - Setting pipeline config (build/int_ecmp.json)...
+ - Inserting 5 table entries...
+ - MyIngress.ecmp_group_table: hdr.ipv4.dstAddr=['10.0.2.2', 32] => MyIngress.set_group(gid=1)
+ - MyIngress.ecmp_select_table: meta.group_id=1, meta.hash=0 => MyIngress.set_port(port=2)
+ - MyIngress.ecmp_select_table: meta.group_id=1, meta.hash=1 => MyIngress.set_port(port=2)
+ - MyIngress.mac_rewrite: standard_metadata.egress_spec=2 => MyIngress.rewrite_mac(dst=aa:bb:cc:00:04:03, src=aa:bb:cc:00:03:02)
+ - MyIngress.int_table: hdr.ipv4.dstAddr=['10.0.2.2', 32] => MyIngress.enable_int(id=3)
+Configuring switch s4 using P4Runtime with file s4-runtime.json
+ - Using P4Info file build/int_ecmp.p4.p4info.txtpb...
+ - Connecting to P4Runtime server on 127.0.0.1:50054 (bmv2)...
+ - Setting pipeline config (build/int_ecmp.json)...
+ - Inserting 5 table entries...
+ - MyIngress.ecmp_group_table: hdr.ipv4.dstAddr=['10.0.2.2', 32] => MyIngress.set_group(gid=1)
+ - MyIngress.ecmp_select_table: meta.group_id=1, meta.hash=0 => MyIngress.set_port(port=1)
+ - MyIngress.ecmp_select_table: meta.group_id=1, meta.hash=1 => MyIngress.set_port(port=1)
+ - MyIngress.int_table: hdr.ipv4.dstAddr=['10.0.2.2', 32] => MyIngress.enable_int(id=4)
+ - MyIngress.mac_rewrite: standard_metadata.egress_spec=1 => MyIngress.rewrite_mac(dst=08:00:00:00:02:00, src=aa:bb:cc:00:04:01)
+s1 -> gRPC port: 50051
+s2 -> gRPC port: 50052
+s3 -> gRPC port: 50053
+s4 -> gRPC port: 50054
+**********
+h1
+default interface: eth0 10.0.1.1        08:00:00:00:01:11
+**********
+**********
+h2
+default interface: eth0 10.0.2.2        08:00:00:00:02:22
+**********
+Starting mininet CLI
+
+======================================================================
+Welcome to the BMV2 Mininet CLI!
+======================================================================
+Your P4 program is installed into the BMV2 software switch
+and your initial runtime configuration is loaded. You can interact
+with the network using the mininet CLI below.
+
+To inspect or change the switch configuration, connect to
+its CLI from your host operating system using this command:
+  simple_switch_CLI --thrift-port <switch thrift port>
+
+To view a switch log, run this command from your host OS:
+  tail -f /home/p4/a21/P4codes/logs/<switchname>.log
+
+To view the switch output pcap, check the pcap files in /home/p4/a21/P4codes/pcaps:
+ for example run:  sudo tcpdump -xxx -r s1-eth1.pcap
+
+To view the P4Runtime requests sent to the switch, check the
+corresponding txt file in /home/p4/a21/P4codes/logs:
+ for example run:  cat /home/p4/a21/P4codes/logs/s1-p4runtime-requests.txt
+
+mininet> xterm h2
+mininet> h1 python3 send.py 10.0.2.2 5
+sending 5 pkts to 10.0.2.2 on eth0
+###[ Ethernet ]### 
+  dst       = ff:ff:ff:ff:ff:ff
+  src       = 08:00:00:00:01:11
+  type      = IPv4
+###[ IP ]### 
+     version   = 4
+     ihl       = 5
+     tos       = 0x0
+     len       = 49
+     id        = 1
+     flags     = 
+     frag      = 0
+     ttl       = 64
+     proto     = tcp
+     chksum    = 0x63c4
+     src       = 10.0.1.1
+     dst       = 10.0.2.2
+     \options   \
+###[ TCP ]### 
+        sport     = 1234
+        dport     = 1234
+        seq       = 0
+        ack       = 0
+        dataofs   = 5
+        reserved  = 0
+        flags     = S
+        window    = 8192
+        chksum    = 0xedf3
+        urgptr    = 0
+        options   = []
+###[ Raw ]### 
+           load      = 'HELLO_INT'
+
+mininet>
 
 
+xtern of h2:
+
+root@p4:~/home/p4/a21/P4codes# python3 receive.py
+sniffing on eth0
+INT -> hop_count=3, switch_id=4, ts=509
+INT -> hop_count=3, switch_id=4, ts=516
+INT -> hop_count=3, switch_id=4, ts=524
+INT -> hop_count=3, switch_id=4, ts=532
+INT -> hop_count=3, switch_id=4, ts=539
 
 
-ISSUE: as you can see righ above the intned output is definitely not that , it was meant to look something liek this 
+ISSUE: as you can see right above the intned output is definitely not that , it was meant to look something like this 
 
 INT -> hop_count=1, switch_id=1, ts=...
 INT -> hop_count=2, switch_id=2, ts=...
@@ -185,7 +325,7 @@ INT -> hop_count=4, switch_id=4, ts=...
 
 so the hop count and the switch id arent what we expect it to be 
 
-give below is the codes latest 
+give below are the codes latest 
 
 
 
@@ -279,7 +419,7 @@ all sn json file
         "hdr.ipv4.dstAddr": ["10.0.2.2", 32]
       },
       "action_name": "MyIngress.enable_int",
-        "action_params": {}
+            "action_params": {"id": 1}
     }
   ]
 }
@@ -335,9 +475,7 @@ all sn json file
           "hdr.ipv4.dstAddr":["10.0.2.2",32]
       },
       "action_name": "MyIngress.enable_int",
-      "action_params": {
-
-      }
+      "action_params": {"id": 2 }
     },
     {
         "table": "MyIngress.mac_rewrite",
@@ -417,7 +555,7 @@ all sn json file
         "hdr.ipv4.dstAddr": ["10.0.2.2", 32]
       },
       "action_name": "MyIngress.enable_int",
-        "action_params": {}
+        "action_params": {"id": 3}
     }
   ]
 }
@@ -473,7 +611,7 @@ all sn json file
         "hdr.ipv4.dstAddr": ["10.0.2.2", 32]
       },
       "action_name": "MyIngress.enable_int",
-        "action_params": {}
+        "action_params": {"id": 4}
     },
       {
       "table": "MyIngress.mac_rewrite",
@@ -581,14 +719,13 @@ def main():
 if __name__ == '__main__':
     main()
 p4
-/* Updated P4_16 program with conditional INT parsing and unconditional deparser emit */
+/* P4_16 program: INT with switch_id set via runtime table action parameter */
 #include <core.p4>
 #include <v1model.p4>
 
-const bit<16> TYPE_IPV4 = 0x800;
-const bit<8>  PROTO_INT = 0x9A;  // Custom IPv4 protocol number for INT header
+const bit<16> TYPE_IPV4 = 0x0800;
+const bit<8>  PROTO_INT  = 0x9A;
 
-// Header definitions
 typedef bit<48> macAddr_t;
 typedef bit<32> ip4Addr_t;
 
@@ -613,7 +750,7 @@ header ipv4_t {
     ip4Addr_t dstAddr;
 }
 
-// INT telemetry header (6 bytes)
+// INT telemetry header
 header int_t {
     bit<8>  hop_count;
     bit<8>  switch_id;
@@ -627,16 +764,13 @@ struct headers {
 }
 
 struct metadata {
-    bit<8> group_id;
-    bit<1> hash;
-    bit<1> do_int;
-    bit<8> switch_id;
+    bit<8>  group_id;
+    bit<1>  hash;
+    bit<1>  do_int;
+    bit<8>  switch_id;
 }
 
-// Register storing this switch's ID
-register<bit<8>>(1) switch_id_reg;
-
-// Parser: Ethernet → IPv4 → optionally INT
+// Parser: Ethernet -> IPv4 -> optional INT
 parser MyParser(packet_in packet,
                 out headers hdr,
                 inout metadata meta,
@@ -664,6 +798,7 @@ parser MyParser(packet_in packet,
     }
 }
 
+// No-op verify checksum
 control MyVerifyChecksum(inout headers hdr, inout metadata meta) {
     apply { }
 }
@@ -671,19 +806,17 @@ control MyVerifyChecksum(inout headers hdr, inout metadata meta) {
 control MyIngress(inout headers hdr,
                   inout metadata meta,
                   inout standard_metadata_t standard_metadata) {
-    // Load static switch ID
-    action load_switch_id() {
-        switch_id_reg.read(meta.switch_id, 0);
+    // ECMP actions
+    action set_group(bit<8> gid) { meta.group_id = gid; }
+    action compute_hash() {
+        meta.hash = (bit<1>)((hdr.ipv4.srcAddr ^ hdr.ipv4.dstAddr) & 1);
     }
+    action set_port(bit<9> port) { standard_metadata.egress_spec = port; }
 
-    // ECMP group select
-    action set_group(bit<8> gid)    { meta.group_id = gid; }
-    action compute_hash()           { meta.hash = (bit<1>)((hdr.ipv4.srcAddr ^ hdr.ipv4.dstAddr) & 1); }
-    action set_port(bit<9> port)    { standard_metadata.egress_spec = port; }
-
-    // Enable INT: set flag and overwrite protocol
-    action enable_int() {
-        meta.do_int = 1;
+    // Enable INT with explicit switch ID
+    action enable_int(bit<8> id) {
+        meta.do_int      = 1;
+        meta.switch_id  = id;
         hdr.ipv4.protocol = PROTO_INT;
     }
 
@@ -694,28 +827,27 @@ control MyIngress(inout headers hdr,
     }
 
     table ecmp_group_table {
-        key = { hdr.ipv4.dstAddr: lpm; }
+        key     = { hdr.ipv4.dstAddr: lpm; }
         actions = { set_group; }
-        size = 1024;
+        size    = 1024;
     }
     table ecmp_select_table {
-        key = { meta.group_id: exact; meta.hash: exact; }
+        key     = { meta.group_id: exact; meta.hash: exact; }
         actions = { set_port; }
-        size = 1024;
+        size    = 1024;
     }
     table int_table {
-        key = { hdr.ipv4.dstAddr: lpm; }
+        key     = { hdr.ipv4.dstAddr: lpm; }
         actions = { enable_int; }
-        size = 1024;
+        size    = 1024;
     }
     table mac_rewrite {
-        key = { standard_metadata.egress_spec: exact; }
+        key     = { standard_metadata.egress_spec: exact; }
         actions = { rewrite_mac; }
-        size = 16;
+        size    = 16;
     }
 
     apply {
-        load_switch_id();
         if (hdr.ipv4.isValid()) {
             ecmp_group_table.apply();
             compute_hash();
@@ -725,8 +857,8 @@ control MyIngress(inout headers hdr,
 
             if (meta.do_int == 1) {
                 hdr.inst.setValid();
-                hdr.inst.hop_count = hdr.inst.hop_count + 1;
-                hdr.inst.switch_id = meta.switch_id;
+                hdr.inst.hop_count        = hdr.inst.hop_count + 1;
+                hdr.inst.switch_id        = meta.switch_id;
                 hdr.inst.ingress_timestamp = standard_metadata.ingress_global_timestamp;
             }
         }
@@ -754,12 +886,13 @@ control MyComputeChecksum(inout headers hdr, inout metadata meta) {
     }
 }
 
-// Deparser now emits INT header unconditionally (BMv2 supports emitting invalid headers as zeros)
+// Deparser emits INT header unconditionally
 control MyDeparser(packet_out packet, in headers hdr) {
     apply {
         packet.emit(hdr.ethernet);
         packet.emit(hdr.ipv4);
         packet.emit(hdr.inst);
+        // payload follows automatically
     }
 }
 
