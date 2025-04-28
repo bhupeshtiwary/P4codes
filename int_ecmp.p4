@@ -1,11 +1,10 @@
-/* Updated P4_16 program with conditional INT parsing and unconditional deparser emit */
+/* P4_16 program: INT with switch_id set via runtime table action parameter */
 #include <core.p4>
 #include <v1model.p4>
 
-const bit<16> TYPE_IPV4 = 0x800;
-const bit<8>  PROTO_INT = 0x9A;  // Custom IPv4 protocol number for INT header
+const bit<16> TYPE_IPV4 = 0x0800;
+const bit<8>  PROTO_INT  = 0x9A;
 
-// Header definitions
 typedef bit<48> macAddr_t;
 typedef bit<32> ip4Addr_t;
 
@@ -30,7 +29,7 @@ header ipv4_t {
     ip4Addr_t dstAddr;
 }
 
-// INT telemetry header (6 bytes)
+// INT telemetry header
 header int_t {
     bit<8>  hop_count;
     bit<8>  switch_id;
@@ -44,16 +43,13 @@ struct headers {
 }
 
 struct metadata {
-    bit<8> group_id;
-    bit<1> hash;
-    bit<1> do_int;
-    bit<8> switch_id;
+    bit<8>  group_id;
+    bit<1>  hash;
+    bit<1>  do_int;
+    bit<8>  switch_id;
 }
 
-// Register storing this switch's ID
-register<bit<8>>(1) switch_id_reg;
-
-// Parser: Ethernet → IPv4 → optionally INT
+// Parser: Ethernet -> IPv4 -> optional INT
 parser MyParser(packet_in packet,
                 out headers hdr,
                 inout metadata meta,
@@ -81,6 +77,7 @@ parser MyParser(packet_in packet,
     }
 }
 
+// No-op verify checksum
 control MyVerifyChecksum(inout headers hdr, inout metadata meta) {
     apply { }
 }
@@ -88,62 +85,59 @@ control MyVerifyChecksum(inout headers hdr, inout metadata meta) {
 control MyIngress(inout headers hdr,
                   inout metadata meta,
                   inout standard_metadata_t standard_metadata) {
-    // Load static switch ID
-    action load_switch_id() {
-        switch_id_reg.read(meta.switch_id, 0);
+    // ECMP actions
+    action set_group(bit<8> gid) { meta.group_id = gid; }
+    action compute_hash() {
+        meta.hash = (bit<1>)((hdr.ipv4.srcAddr ^ hdr.ipv4.dstAddr) & 1);
     }
-    
-    // ECMP group select
-    action set_group(bit<8> gid)    { meta.group_id = gid; }
-    action compute_hash()           { meta.hash = (bit<1>)((hdr.ipv4.srcAddr ^ hdr.ipv4.dstAddr) & 1); }
-    action set_port(bit<9> port)    { standard_metadata.egress_spec = port; }
-    
-    // Enable INT: set flag and overwrite protocol
-    action enable_int() {
-        meta.do_int = 1;
+    action set_port(bit<9> port) { standard_metadata.egress_spec = port; }
+
+    // Enable INT with explicit switch ID
+    action enable_int(bit<8> id) {
+        meta.do_int      = 1;
+        meta.switch_id  = id;
         hdr.ipv4.protocol = PROTO_INT;
     }
-    
+
     // MAC rewrite for forwarding
     action rewrite_mac(macAddr_t dst, macAddr_t src) {
         hdr.ethernet.dstAddr = dst;
         hdr.ethernet.srcAddr = src;
     }
-    
+
     table ecmp_group_table {
-        key = { hdr.ipv4.dstAddr: lpm; }
+        key     = { hdr.ipv4.dstAddr: lpm; }
         actions = { set_group; }
-        size = 1024;
+        size    = 1024;
     }
     table ecmp_select_table {
-        key = { meta.group_id: exact; meta.hash: exact; }
+        key     = { meta.group_id: exact; meta.hash: exact; }
         actions = { set_port; }
-        size = 1024;
+        size    = 1024;
     }
     table int_table {
-        key = { hdr.ipv4.dstAddr: lpm; }
+        key     = { hdr.ipv4.dstAddr: lpm; }
         actions = { enable_int; }
-        size = 1024;
+        size    = 1024;
     }
     table mac_rewrite {
-        key = { standard_metadata.egress_spec: exact; }
+        key     = { standard_metadata.egress_spec: exact; }
         actions = { rewrite_mac; }
-        size = 16;
+        size    = 16;
     }
-    
+
     apply {
-        load_switch_id();
         if (hdr.ipv4.isValid()) {
             ecmp_group_table.apply();
             compute_hash();
             ecmp_select_table.apply();
             mac_rewrite.apply();
             int_table.apply();
-            
+
             if (meta.do_int == 1) {
                 hdr.inst.setValid();
-                hdr.inst.hop_count = hdr.inst.hop_count + 1;
-                hdr.inst.switch_id = meta.switch_id;
+                hdr.inst.hop_count        = hdr.inst.hop_count + 1;
+                hdr.inst.switch_id        = meta.switch_id;
                 hdr.inst.ingress_timestamp = standard_metadata.ingress_global_timestamp;
             }
         }
@@ -171,12 +165,13 @@ control MyComputeChecksum(inout headers hdr, inout metadata meta) {
     }
 }
 
-// Deparser now emits INT header unconditionally (BMv2 supports emitting invalid headers as zeros)
+// Deparser emits INT header unconditionally
 control MyDeparser(packet_out packet, in headers hdr) {
     apply {
         packet.emit(hdr.ethernet);
         packet.emit(hdr.ipv4);
         packet.emit(hdr.inst);
+        // payload follows automatically
     }
 }
 
