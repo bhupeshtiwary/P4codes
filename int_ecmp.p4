@@ -120,12 +120,12 @@ control MyIngress(inout headers hdr,
     apply {
         if (!hdr.ipv4.isValid()) return;
 
-        // Count existing INT slots
+                // Count existing INT hops by checking hop_count
         meta.next_idx = 0;
-        if (hdr.inst1.isValid()) meta.next_idx = 1;
-        if (hdr.inst2.isValid()) meta.next_idx = 2;
-        if (hdr.inst3.isValid()) meta.next_idx = 3;
-        if (hdr.inst4.isValid()) meta.next_idx = 4;
+        if (hdr.inst1.hop_count != 0) meta.next_idx = 1;
+        if (hdr.inst2.hop_count != 0) meta.next_idx = 2;
+        if (hdr.inst3.hop_count != 0) meta.next_idx = 3;
+        if (hdr.inst4.hop_count != 0) meta.next_idx = 4;
 
         // ECMP + MAC rewrite
         ecmp_group_table.apply();
