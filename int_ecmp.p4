@@ -243,10 +243,19 @@ control MyDeparser(packet_out packet, in headers hdr) {
     apply {
         packet.emit(hdr.ethernet);
         packet.emit(hdr.ipv4);
-        packet.emit(hdr.inst1);
-        packet.emit(hdr.inst2);
-        packet.emit(hdr.inst3);
-        packet.emit(hdr.inst4);
+
+        if (hdr.inst1.isValid()) {
+            packet.emit(hdr.inst1);
+        }
+        if (hdr.inst2.isValid()) {
+            packet.emit(hdr.inst2);
+        }
+        if (hdr.inst3.isValid()) {
+            packet.emit(hdr.inst3);
+        }
+        if (hdr.inst4.isValid()) {
+            packet.emit(hdr.inst4);
+        }
     }
 }
 
