@@ -7,12 +7,13 @@ const bit<8>  PROTO_INT  = 0x9A;
 typedef bit<48> macAddr_t;
 typedef bit<32> ip4Addr_t;
 
-// Standard headers
+// Standard Ethernet header
 header ethernet_t {
     macAddr_t dstAddr;
     macAddr_t srcAddr;
     bit<16>   etherType;
 }
+// Standard IPv4 header
 header ipv4_t {
     bit<4>    version;
     bit<4>    ihl;
@@ -45,7 +46,7 @@ struct headers {
     int_t      inst4;
 }
 
-// Metadata for ECMP and INT
+// ECMP + INT metadata
 struct metadata {
     bit<8> group_id;
     bit<1> hash;
@@ -54,7 +55,7 @@ struct metadata {
     bit<8> next_idx;
 }
 
-// Parser: Ethernet -> IPv4 -> unconditional INT extraction for PROTO_INT
+// Parser: Ethernet -> IPv4 -> INT if proto matches
 parser MyParser(packet_in packet,
                 out headers hdr,
                 inout metadata meta,
@@ -80,10 +81,10 @@ parser MyParser(packet_in packet,
     state parse_inst4 { packet.extract(hdr.inst4); transition accept; }
 }
 
-// No-op verify checksum
+// No-op checksum verify
 control MyVerifyChecksum(inout headers hdr, inout metadata meta) { apply { } }
 
-// Ingress: ECMP, INT enabling, stamping, and zeroing extra slots
+// Ingress: ECMP, INT enable, stamping, and validity management
 control MyIngress(inout headers hdr,
                   inout metadata meta,
                   inout standard_metadata_t standard_metadata) {
@@ -98,7 +99,6 @@ control MyIngress(inout headers hdr,
         meta.do_int = 1;
         meta.switch_id = id;
         hdr.ipv4.protocol = PROTO_INT;
-        // IHL and totalLen unchanged for Python sniffer alignment
     }
 
     table ecmp_group_table {
@@ -120,64 +120,54 @@ control MyIngress(inout headers hdr,
     apply {
         if (!hdr.ipv4.isValid()) return;
 
-                // Count existing INT hops by checking hop_count
+        // Determine where to stamp next
         meta.next_idx = 0;
         if (hdr.inst1.hop_count != 0) meta.next_idx = 1;
         if (hdr.inst2.hop_count != 0) meta.next_idx = 2;
         if (hdr.inst3.hop_count != 0) meta.next_idx = 3;
         if (hdr.inst4.hop_count != 0) meta.next_idx = 4;
 
-        // ECMP + MAC rewrite
+        // ECMP forwarding
         ecmp_group_table.apply();
         compute_hash();
         ecmp_select_table.apply();
 
-        // Enable INT if needed
+        // Enable INT if matching
         int_table.apply();
 
-        // Stamp new INT slot and zero out subsequent
+        // Stamp new INT slot if space remains
         if (meta.do_int == 1 && meta.next_idx < 4) {
             bit<8> idx = meta.next_idx;
+            // Make the chosen header valid
             if (idx == 0) hdr.inst1.setValid();
             else if (idx == 1) hdr.inst2.setValid();
             else if (idx == 2) hdr.inst3.setValid();
             else hdr.inst4.setValid();
 
-            // Assign fields
+            // Assign hop_count dynamically
+            bit<8> hop = idx + 1;
             if (idx == 0) {
-                hdr.inst1.hop_count = 1;
+                hdr.inst1.hop_count = hop;
                 hdr.inst1.switch_id = meta.switch_id;
                 hdr.inst1.ingress_timestamp = standard_metadata.ingress_global_timestamp;
             } else if (idx == 1) {
-                hdr.inst2.hop_count = 2;
+                hdr.inst2.hop_count = hop;
                 hdr.inst2.switch_id = meta.switch_id;
                 hdr.inst2.ingress_timestamp = standard_metadata.ingress_global_timestamp;
             } else if (idx == 2) {
-                hdr.inst3.hop_count = 3;
+                hdr.inst3.hop_count = hop;
                 hdr.inst3.switch_id = meta.switch_id;
                 hdr.inst3.ingress_timestamp = standard_metadata.ingress_global_timestamp;
             } else {
-                hdr.inst4.hop_count = 4;
+                hdr.inst4.hop_count = hop;
                 hdr.inst4.switch_id = meta.switch_id;
                 hdr.inst4.ingress_timestamp = standard_metadata.ingress_global_timestamp;
             }
 
-            // Zero out any further slots so hop_count==0 stops Python parser
-            if (idx <= 2) {
-                hdr.inst4.hop_count = 0;
-                hdr.inst4.switch_id = 0;
-                hdr.inst4.ingress_timestamp = 0;
-            }
-            if (idx <= 1) {
-                hdr.inst3.hop_count = 0;
-                hdr.inst3.switch_id = 0;
-                hdr.inst3.ingress_timestamp = 0;
-            }
-            if (idx <= 0) {
-                hdr.inst2.hop_count = 0;
-                hdr.inst2.switch_id = 0;
-                hdr.inst2.ingress_timestamp = 0;
-            }
+            // Invalidate any unused headers for termination
+            if (idx < 3) hdr.inst4.setInvalid();
+            if (idx < 2) hdr.inst3.setInvalid();
+            if (idx < 1) hdr.inst2.setInvalid();
         }
     }
 }
@@ -186,7 +176,7 @@ control MyIngress(inout headers hdr,
 control MyEgress(inout headers hdr, inout metadata meta,
                  inout standard_metadata_t standard_metadata) { apply { } }
 
-// Recompute checksum
+// Compute checksum for IPv4
 control MyComputeChecksum(inout headers hdr, inout metadata meta) {
     apply {
         update_checksum(
@@ -202,15 +192,15 @@ control MyComputeChecksum(inout headers hdr, inout metadata meta) {
     }
 }
 
-// Deparser emits all slots; zeros terminate parsing in Python
+// Deparser emits only valid INT headers
 control MyDeparser(packet_out packet, in headers hdr) {
     apply {
         packet.emit(hdr.ethernet);
         packet.emit(hdr.ipv4);
-        packet.emit(hdr.inst1);
-        packet.emit(hdr.inst2);
-        packet.emit(hdr.inst3);
-        packet.emit(hdr.inst4);
+        if (hdr.inst1.isValid()) packet.emit(hdr.inst1);
+        if (hdr.inst2.isValid()) packet.emit(hdr.inst2);
+        if (hdr.inst3.isValid()) packet.emit(hdr.inst3);
+        if (hdr.inst4.isValid()) packet.emit(hdr.inst4);
     }
 }
 
