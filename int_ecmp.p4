@@ -84,7 +84,7 @@ parser MyParser(packet_in packet,
 // No-op checksum verify
 control MyVerifyChecksum(inout headers hdr, inout metadata meta) { apply { } }
 
-// Ingress: ECMP, INT enable, stamping, and validity management
+// Ingress: ECMP, INT enable, stamping, and zeroing unused slots
 control MyIngress(inout headers hdr,
                   inout metadata meta,
                   inout standard_metadata_t standard_metadata) {
@@ -120,7 +120,7 @@ control MyIngress(inout headers hdr,
     apply {
         if (!hdr.ipv4.isValid()) return;
 
-        // Determine where to stamp next
+        // Determine next INT slot index
         meta.next_idx = 0;
         if (hdr.inst1.hop_count != 0) meta.next_idx = 1;
         if (hdr.inst2.hop_count != 0) meta.next_idx = 2;
@@ -138,36 +138,29 @@ control MyIngress(inout headers hdr,
         // Stamp new INT slot if space remains
         if (meta.do_int == 1 && meta.next_idx < 4) {
             bit<8> idx = meta.next_idx;
-            // Make the chosen header valid
-            if (idx == 0) hdr.inst1.setValid();
-            else if (idx == 1) hdr.inst2.setValid();
-            else if (idx == 2) hdr.inst3.setValid();
-            else hdr.inst4.setValid();
-
-            // Assign hop_count dynamically
             bit<8> hop = idx + 1;
+            // Prepare all slots: stamp chosen, zero out the rest
             if (idx == 0) {
-                hdr.inst1.hop_count = hop;
-                hdr.inst1.switch_id = meta.switch_id;
-                hdr.inst1.ingress_timestamp = standard_metadata.ingress_global_timestamp;
+                hdr.inst1.setValid(); hdr.inst1.hop_count = hop; hdr.inst1.switch_id = meta.switch_id; hdr.inst1.ingress_timestamp = standard_metadata.ingress_global_timestamp;
+                // zero remaining
+                hdr.inst2.hop_count = 0; hdr.inst2.switch_id = 0; hdr.inst2.ingress_timestamp = 0;
+                hdr.inst3.hop_count = 0; hdr.inst3.switch_id = 0; hdr.inst3.ingress_timestamp = 0;
+                hdr.inst4.hop_count = 0; hdr.inst4.switch_id = 0; hdr.inst4.ingress_timestamp = 0;
             } else if (idx == 1) {
-                hdr.inst2.hop_count = hop;
-                hdr.inst2.switch_id = meta.switch_id;
-                hdr.inst2.ingress_timestamp = standard_metadata.ingress_global_timestamp;
+                hdr.inst2.setValid(); hdr.inst2.hop_count = hop; hdr.inst2.switch_id = meta.switch_id; hdr.inst2.ingress_timestamp = standard_metadata.ingress_global_timestamp;
+                hdr.inst1.setValid(); // keep existing
+                // zero remaining
+                hdr.inst3.hop_count = 0; hdr.inst3.switch_id = 0; hdr.inst3.ingress_timestamp = 0;
+                hdr.inst4.hop_count = 0; hdr.inst4.switch_id = 0; hdr.inst4.ingress_timestamp = 0;
             } else if (idx == 2) {
-                hdr.inst3.hop_count = hop;
-                hdr.inst3.switch_id = meta.switch_id;
-                hdr.inst3.ingress_timestamp = standard_metadata.ingress_global_timestamp;
+                hdr.inst3.setValid(); hdr.inst3.hop_count = hop; hdr.inst3.switch_id = meta.switch_id; hdr.inst3.ingress_timestamp = standard_metadata.ingress_global_timestamp;
+                hdr.inst1.setValid(); hdr.inst2.setValid();
+                // zero remaining
+                hdr.inst4.hop_count = 0; hdr.inst4.switch_id = 0; hdr.inst4.ingress_timestamp = 0;
             } else {
-                hdr.inst4.hop_count = hop;
-                hdr.inst4.switch_id = meta.switch_id;
-                hdr.inst4.ingress_timestamp = standard_metadata.ingress_global_timestamp;
+                hdr.inst4.setValid(); hdr.inst4.hop_count = hop; hdr.inst4.switch_id = meta.switch_id; hdr.inst4.ingress_timestamp = standard_metadata.ingress_global_timestamp;
+                hdr.inst1.setValid(); hdr.inst2.setValid(); hdr.inst3.setValid();
             }
-
-            // Invalidate any unused headers for termination
-            if (idx < 3) hdr.inst4.setInvalid();
-            if (idx < 2) hdr.inst3.setInvalid();
-            if (idx < 1) hdr.inst2.setInvalid();
         }
     }
 }
@@ -192,15 +185,15 @@ control MyComputeChecksum(inout headers hdr, inout metadata meta) {
     }
 }
 
-// Deparser emits only valid INT headers
+// Deparser emits all 4 INT slots unconditionally
 control MyDeparser(packet_out packet, in headers hdr) {
     apply {
         packet.emit(hdr.ethernet);
         packet.emit(hdr.ipv4);
-        if (hdr.inst1.isValid()) packet.emit(hdr.inst1);
-        if (hdr.inst2.isValid()) packet.emit(hdr.inst2);
-        if (hdr.inst3.isValid()) packet.emit(hdr.inst3);
-        if (hdr.inst4.isValid()) packet.emit(hdr.inst4);
+        packet.emit(hdr.inst1);
+        packet.emit(hdr.inst2);
+        packet.emit(hdr.inst3);
+        packet.emit(hdr.inst4);
     }
 }
 
