@@ -5,7 +5,7 @@ def parse_int(pkt):
     raw = bytes(pkt)
     eth_len = 14
     ihl     = (raw[14] & 0x0F) * 4
-    off     = eth_len + ihl
+    off     = eth_len + 20
 
     # Each INT entry is 8 bytes: hop(1) + switch_id(1) + ts(6)
     while off + 8 <= len(raw):
