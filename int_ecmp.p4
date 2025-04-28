@@ -74,15 +74,15 @@ parser MyParser(packet_in packet,
             default:    accept;
         }
     }
-    state parse_int1 {
+        state parse_int1 {
         packet.extract(hdr.inst1);
         transition select(hdr.ipv4.ihl) {
-            7:  parse_int2;  // IHL=7 after 1st hop
-            9:  parse_int2;  // after 2nd
+            9:  parse_int2;  // IHL=9 after 2nd hop
             11: parse_int2;  // after 3rd
             13: parse_int2;  // after 4th
             default: accept;
         }
+    }
     }
     state parse_int2 {
         packet.extract(hdr.inst2);
