@@ -62,7 +62,7 @@
         "hdr.ipv4.dstAddr": ["10.0.2.2", 32]
       },
       "action_name": "MyIngress.enable_int",
-	"action_params": {}
+	"action_params": {"id": 3}
     }
   ]
 }
