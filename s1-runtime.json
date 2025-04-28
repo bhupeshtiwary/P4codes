@@ -14,7 +14,7 @@
 	{
 	    "table":"MyIngress.mac_rewrite",
 	    "match":{
-		"standard_metadata.egress_spec":2},
+		"egress_spec":2},
 	    "action_name":"MyIngress.rewrite_mac",
 	    "action_params":{
 		"dst":"aa:bb:cc:00:02:01",
@@ -24,7 +24,7 @@
 	},{
 	    "table":"MyIngress.mac_rewrite",
 	    "match":{
-		"standard_metadata.egress_spec":3},
+		"egress_spec":3},
 	    "action_name":"MyIngress.rewrite_mac",
 	    "action_params":{
 		"dst":"aa:bb:cc:00:03:01",

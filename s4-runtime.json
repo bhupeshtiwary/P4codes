@@ -55,7 +55,7 @@
       {
       "table": "MyIngress.mac_rewrite",
       "match": {
-        "standard_metadata.egress_spec":1
+        "egress_spec":1
       },
       "action_name": "MyIngress.rewrite_mac",
 	  "action_params": {
