@@ -54,7 +54,7 @@ struct metadata {
     bit<8> next_idx;
 }
 
-// Parser: Ethernet -> IPv4 -> optional INT slots
+// Parser: Ethernet -> IPv4 -> conditional INT slots based on IHL
 parser MyParser(packet_in packet,
                 out headers hdr,
                 inout metadata meta,
@@ -76,17 +76,42 @@ parser MyParser(packet_in packet,
             default:    accept;
         }
     }
+    // Always parse inst1 if protocol == INT
     state parse_int1 {
         packet.extract(hdr.inst1);
-        transition parse_int2;
+        transition parse_int2_check;
+    }
+    // Only parse inst2 if IHL indicates >=2 INT headers
+    state parse_int2_check {
+        transition select(hdr.ipv4.ihl) {
+            9:  parse_int2;
+            11: parse_int2;
+            13: parse_int2;
+            default: accept;
+        }
     }
     state parse_int2 {
         packet.extract(hdr.inst2);
-        transition parse_int3;
+        transition parse_int3_check;
+    }
+    // Only parse inst3 if IHL indicates >=3 INT headers
+    state parse_int3_check {
+        transition select(hdr.ipv4.ihl) {
+            11: parse_int3;
+            13: parse_int3;
+            default: accept;
+        }
     }
     state parse_int3 {
         packet.extract(hdr.inst3);
-        transition parse_int4;
+        transition parse_int4_check;
+    }
+    // Only parse inst4 if IHL indicates 4 INT headers
+    state parse_int4_check {
+        transition select(hdr.ipv4.ihl) {
+            13: parse_int4;
+            default: accept;
+        }
     }
     state parse_int4 {
         packet.extract(hdr.inst4);
@@ -99,7 +124,7 @@ control MyVerifyChecksum(inout headers hdr, inout metadata meta) {
     apply { }
 }
 
-// Ingress processing
+// Ingress processing with correct next_idx calculation
 control MyIngress(inout headers hdr,
                   inout metadata meta,
                   inout standard_metadata_t standard_metadata) {
@@ -143,12 +168,10 @@ control MyIngress(inout headers hdr,
     }
 
     apply {
-        // Skip non-IPv4 traffic
         if (!hdr.ipv4.isValid()) {
             return;
         }
-
-        // 1) Compute the next INT index by examining existing headers
+        // Compute how many INT headers already present
         if (hdr.ipv4.protocol == PROTO_INT) {
             meta.next_idx = 0;
             if (hdr.inst1.isValid()) meta.next_idx = 1;
@@ -158,16 +181,13 @@ control MyIngress(inout headers hdr,
         } else {
             meta.next_idx = 0;
         }
-
-        // 2) ECMP grouping and MAC rewrite
+        // ECMP and MAC rewrite
         ecmp_group_table.apply();
         compute_hash();
         ecmp_select_table.apply();
-
-        // 3) Optionally enable INT (does not reset next_idx)
+        // Enable INT if matching
         int_table.apply();
-
-        // 4) Stamp into the next available slot
+        // Stamp into next free slot
         if (meta.do_int == 1) {
             if (meta.next_idx == 0) {
                 hdr.inst1.setValid();
@@ -218,7 +238,7 @@ control MyComputeChecksum(inout headers hdr, inout metadata meta) {
     }
 }
 
-// Deparser: emit Ethernet, IPv4, then all INT headers (only valid ones serialize)
+// Deparser: emit valid headers
 control MyDeparser(packet_out packet, in headers hdr) {
     apply {
         packet.emit(hdr.ethernet);
