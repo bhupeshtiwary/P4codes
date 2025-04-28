@@ -1,16 +1,25 @@
 #!/usr/bin/env python3
-from scapy.all import sniff
+from scapy.all import sniff, IP
+
+PROTO_INT = 0x9A  # same as in your P4 program
 
 def parse_int(pkt):
-    raw = bytes(pkt)
-    eth_len = 14
-    ihl     = (raw[14] & 0x0F) * 4
-    off     = eth_len + 20
+    # Only IPv4 INT packets
+    if not pkt.haslayer(IP):
+        return
+    ip = pkt[IP]
+    if ip.proto != PROTO_INT:
+        return
 
-    # Each INT entry is 8 bytes: hop(1) + switch_id(1) + ts(6)
-    while off + 8 <= len(raw):
+    raw = bytes(ip.payload)
+    off = 0
+
+    # Parse at most 4 INT entries, then stop
+    for _ in range(4):
+        if off + 8 > len(raw):
+            break
         hop = raw[off]
-        if hop == 0:        # stop on unused slot
+        if hop == 0:
             break
         sw = raw[off + 1]
         ts = int.from_bytes(raw[off + 2 : off + 8], "big")
@@ -18,5 +27,5 @@ def parse_int(pkt):
         off += 8
 
 if __name__ == "__main__":
-    # Listen on all interfaces—inside h2 this will pick up h2-eth0
-    sniff(prn=parse_int)
+    # Only capture our INT packets, exit after a while (optional)
+    sniff(filter="ip proto 154", prn=parse_int)
