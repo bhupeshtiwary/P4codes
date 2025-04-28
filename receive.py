@@ -30,4 +30,4 @@ def main():
     sniff(iface=iface, prn=parse_int)
 
 if __name__ == '__main__':
-    main
+    main()
