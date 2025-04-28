@@ -28,13 +28,14 @@ header ipv4_t {
     ip4Addr_t dstAddr;
 }
 
-// INT telemetry header
+// INT telemetry header (8 bytes per hop)
 header int_t {
     bit<8>  hop_count;
     bit<8>  switch_id;
     bit<48> ingress_timestamp;
 }
 
+// Packet headers including up to 4 INT slots
 struct headers {
     ethernet_t ethernet;
     ipv4_t     ipv4;
@@ -44,6 +45,7 @@ struct headers {
     int_t      inst4;
 }
 
+// Metadata for ECMP and INT
 struct metadata {
     bit<8> group_id;
     bit<1> hash;
@@ -52,74 +54,56 @@ struct metadata {
     bit<8> next_idx;
 }
 
+// Parser: Ethernet -> IPv4 -> optional INT slots for PROTO_INT
 parser MyParser(packet_in packet,
                 out headers hdr,
                 inout metadata meta,
                 inout standard_metadata_t standard_metadata) {
-    state start { transition parse_ethernet; }
+    state start {
+        transition parse_ethernet;
+    }
     state parse_ethernet {
         packet.extract(hdr.ethernet);
         transition select(hdr.ethernet.etherType) {
             TYPE_IPV4: parse_ipv4;
-            default: accept;
+            default:    accept;
         }
     }
     state parse_ipv4 {
         packet.extract(hdr.ipv4);
         transition select(hdr.ipv4.protocol) {
-            PROTO_INT: parse_int1;
-            default: accept;
+            PROTO_INT: parse_inst1;
+            default:    accept;
         }
     }
-    state parse_int1 {
+    state parse_inst1 {
         packet.extract(hdr.inst1);
-        transition parse_int2_check;
+        transition parse_inst2;
     }
-    state parse_int2_check {
-        transition select(hdr.ipv4.ihl) {
-            7:  parse_int2;
-            9:  parse_int2;
-            11: parse_int2;
-            13: parse_int2;
-            default: accept;
-        }
-    }
-    state parse_int2 {
+    state parse_inst2 {
         packet.extract(hdr.inst2);
-        transition parse_int3_check;
+        transition parse_inst3;
     }
-    state parse_int3_check {
-        transition select(hdr.ipv4.ihl) {
-            9:  parse_int3;
-            11: parse_int3;
-            13: parse_int3;
-            default: accept;
-        }
-    }
-    state parse_int3 {
+    state parse_inst3 {
         packet.extract(hdr.inst3);
-        transition parse_int4_check;
+        transition parse_inst4;
     }
-    state parse_int4_check {
-        transition select(hdr.ipv4.ihl) {
-            11: parse_int4;
-            13: parse_int4;
-            default: accept;
-        }
-    }
-    state parse_int4 {
+    state parse_inst4 {
         packet.extract(hdr.inst4);
         transition accept;
     }
 }
 
+// No-op verify checksum
 control MyVerifyChecksum(inout headers hdr, inout metadata meta) {
     apply { }
 }
 
+// Ingress: ECMP, INT enabling, stamping, and zeroing extra slots
 control MyIngress(inout headers hdr,
                   inout metadata meta,
                   inout standard_metadata_t standard_metadata) {
+
     action set_group(bit<8> gid) {
         meta.group_id = gid;
     }
@@ -134,11 +118,10 @@ control MyIngress(inout headers hdr,
         hdr.ethernet.srcAddr          = src;
     }
     action enable_int(bit<8> id) {
-        meta.do_int       = 1;
-        meta.switch_id    = id;
-        hdr.ipv4.protocol = PROTO_INT;
-        hdr.ipv4.ihl      = hdr.ipv4.ihl + 2;
-        hdr.ipv4.totalLen = hdr.ipv4.totalLen + 8;
+        meta.do_int        = 1;
+        meta.switch_id     = id;
+        hdr.ipv4.protocol  = PROTO_INT;
+        // Do NOT change ihl or totalLen
     }
 
     table ecmp_group_table {
@@ -159,61 +142,70 @@ control MyIngress(inout headers hdr,
 
     apply {
         if (!hdr.ipv4.isValid()) return;
-        // Count existing INT hops
-        if (hdr.ipv4.protocol == PROTO_INT) {
-            meta.next_idx = 0;
-            if (hdr.inst1.isValid()) meta.next_idx = 1;
-            if (hdr.inst2.isValid()) meta.next_idx = 2;
-            if (hdr.inst3.isValid()) meta.next_idx = 3;
-            if (hdr.inst4.isValid()) meta.next_idx = 4;
-        } else {
-            meta.next_idx = 0;
-        }
-        // ECMP + MAC
+
+        // 1) Count already stamped hops
+        meta.next_idx = 0;
+        if (hdr.inst1.isValid()) meta.next_idx = 1;
+        if (hdr.inst2.isValid()) meta.next_idx = 2;
+        if (hdr.inst3.isValid()) meta.next_idx = 3;
+        if (hdr.inst4.isValid()) meta.next_idx = 4;
+
+        // 2) ECMP + MAC
         ecmp_group_table.apply();
         compute_hash();
         ecmp_select_table.apply();
-        // Enable INT
+
+        // 3) Enable INT for matching dst
         int_table.apply();
-        // Stamp next slot
+
+        // 4) Stamp next slot, then zero out all following slots
         if (meta.do_int == 1 && meta.next_idx < 4) {
             bit<8> idx = meta.next_idx;
+            // Validate slot
             if (idx == 0) hdr.inst1.setValid();
             else if (idx == 1) hdr.inst2.setValid();
             else if (idx == 2) hdr.inst3.setValid();
             else hdr.inst4.setValid();
-            // Set fields
+
+            // Fill fields
             if (idx == 0) {
-                hdr.inst1.hop_count = 1; hdr.inst1.switch_id = meta.switch_id;
+                hdr.inst1.hop_count        = 1;
+                hdr.inst1.switch_id        = meta.switch_id;
                 hdr.inst1.ingress_timestamp = standard_metadata.ingress_global_timestamp;
             } else if (idx == 1) {
-                hdr.inst2.hop_count = 2; hdr.inst2.switch_id = meta.switch_id;
+                hdr.inst2.hop_count        = 2;
+                hdr.inst2.switch_id        = meta.switch_id;
                 hdr.inst2.ingress_timestamp = standard_metadata.ingress_global_timestamp;
             } else if (idx == 2) {
-                hdr.inst3.hop_count = 3; hdr.inst3.switch_id = meta.switch_id;
+                hdr.inst3.hop_count        = 3;
+                hdr.inst3.switch_id        = meta.switch_id;
                 hdr.inst3.ingress_timestamp = standard_metadata.ingress_global_timestamp;
             } else {
-                hdr.inst4.hop_count = 4; hdr.inst4.switch_id = meta.switch_id;
+                hdr.inst4.hop_count        = 4;
+                hdr.inst4.switch_id        = meta.switch_id;
                 hdr.inst4.ingress_timestamp = standard_metadata.ingress_global_timestamp;
             }
-            // Zero unused
+            // Zero out subsequent slots
             if (idx <= 2) {
-                hdr.inst4.hop_count = 0; hdr.inst4.switch_id = 0; hdr.inst4.ingress_timestamp = 0;
+                hdr.inst4 = int_t();
             }
             if (idx <= 1) {
-                hdr.inst3.hop_count = 0; hdr.inst3.switch_id = 0; hdr.inst3.ingress_timestamp = 0;
+                hdr.inst3 = int_t();
             }
             if (idx <= 0) {
-                hdr.inst2.hop_count = 0; hdr.inst2.switch_id = 0; hdr.inst2.ingress_timestamp = 0;
+                hdr.inst2 = int_t();
             }
         }
     }
 }
 
-control MyEgress(inout headers hdr, inout metadata meta, inout standard_metadata_t standard_metadata) {
+// No-op egress
+control MyEgress(inout headers hdr, inout metadata meta,
+                 inout standard_metadata_t standard_metadata) {
     apply { }
 }
 
+// Recompute checksum for IPv4
 control MyComputeChecksum(inout headers hdr, inout metadata meta) {
     apply {
         update_checksum(
@@ -229,6 +221,7 @@ control MyComputeChecksum(inout headers hdr, inout metadata meta) {
     }
 }
 
+// Deparser emits Ethernet, IPv4, then all four INT slots
 control MyDeparser(packet_out packet, in headers hdr) {
     apply {
         packet.emit(hdr.ethernet);
