@@ -1,2 +1,822 @@
-hi bhupesh attempting to trasnfer the directory via git
+Objective:
+The purpose of this assignment is to explore the power of programmable data planes using
+the P4 language to solve limitations of traditional fixed-function networking devices. The
+assignment involves identifying a networking scenario(sample use cases given),
+implementing a P4 program, and demonstrating the solution in a simulated environment
+(e.g., Mininet with BMv2).
+1. Select a Use Case Scenario
+Choose a networking scenario where P4 is beneficial over traditional fixed function packet
+processing (or you can propose your own network scenario). Sample use cases are attached
+at the end of the document.
+2. Design and Implement a P4 Program
+Develop a custom P4_16 program that supports the chosen use case. Your program should
+include:
+- Custom header definitions (if required)
+- Parsing logic for new or modified headers
+- Tables and actions that implement the forwarding or processing behavior
+- Control block logic that integrates everything
+3. Simulate and Test
+Use Mininet + BMv2 + P4Runtime shell or a Python controller to:
+- Run your topology
+- Deploy your P4 program
+- Install flow rules
+- Demonstrate packet flow consistent with your use case
+4. Write a Report
+Prepare a concise report including:
+- The networking challenge addressed
+- Why P4 is beneficial in this context
+- Overview of your P4 program and its logic
+- Results and validation from your test environment
+Deliverables:
+- P4 program (`your_program.p4`)
+- Topology and rule-installation scripts (Mininet + p4runtime-shell)
+- Demonstration outputs (CLI logs, screenshots, or packet captures)
+- Report
 
+
+OUTPUT:
+
+Welcome to the BMV2 Mininet CLI!
+======================================================================
+Your P4 program is installed into the BMV2 software switch
+and your initial runtime configuration is loaded. You can interact
+with the network using the mininet CLI below.
+
+To inspect or change the switch configuration, connect to
+its CLI from your host operating system using this command:
+  simple_switch_CLI --thrift-port <switch thrift port>
+
+To view a switch log, run this command from your host OS:
+  tail -f /home/p4/a14/P4codes/logs/<switchname>.log
+
+To view the switch output pcap, check the pcap files in /home/p4/a14/P4codes/pcaps:
+ for example run:  sudo tcpdump -xxx -r s1-eth1.pcap
+
+To view the P4Runtime requests sent to the switch, check the
+corresponding txt file in /home/p4/a14/P4codes/logs:
+ for example run:  cat /home/p4/a14/P4codes/logs/s1-p4runtime-requests.txt
+
+mininet> xterm h2
+mininet> h1 python3 send.py 10.0.2.2 9
+sending 9 pkts to 10.0.2.2 on eth0
+###[ Ethernet ]### 
+  dst       = ff:ff:ff:ff:ff:ff
+  src       = 08:00:00:00:01:11
+  type      = IPv4
+###[ IP ]### 
+     version   = 4
+     ihl       = 5
+     tos       = 0x0
+     len       = 49
+     id        = 1
+     flags     = 
+     frag      = 0
+     ttl       = 64
+     proto     = tcp
+     chksum    = 0x63c4
+     src       = 10.0.1.1
+     dst       = 10.0.2.2
+     \options   \
+###[ TCP ]### 
+        sport     = 1234
+        dport     = 1234
+        seq       = 0
+        ack       = 0
+        dataofs   = 5
+        reserved  = 0
+        flags     = S
+        window    = 8192
+        chksum    = 0xedf3
+        urgptr    = 0
+        options   = []
+###[ Raw ]### 
+           load      = 'HELLO_INT'
+
+mininet>
+
+
+xterm h2 terminal
+
+root@p4:~/home/p4/a14/P4codes# python3 receive.py
+sniffing on eth0
+INT -> hop_count=1, switch_id=0, ts=439
+INT -> hop_count=1, switch_id=0, ts=446
+INT -> hop_count=1, switch_id=0, ts=454
+INT -> hop_count=1, switch_id=0, ts=462
+INT -> hop_count=1, switch_id=0, ts=469
+INT -> hop_count=1, switch_id=0, ts=477
+INT -> hop_count=1, switch_id=0, ts=485
+INT -> hop_count=1, switch_id=0, ts=492
+INT -> hop_count=1, switch_id=0, ts=500
+
+
+
+
+ISSUE: as you can see righ above the intned output is definitely not that , it was meant to look something liek this 
+
+INT -> hop_count=1, switch_id=1, ts=...
+INT -> hop_count=2, switch_id=2, ts=...
+INT -> hop_count=3, switch_id=3, ts=...
+INT -> hop_count=4, switch_id=4, ts=...
+
+
+so the hop count and the switch id arent what we expect it to be 
+
+give below is the codes
+
+
+
+
+
+CODE:
+
+
+tiwary@Tiwary-QE73456K:~/p4codes$ ls
+Makefile          receive.py       s4-runtime.json       topology.json
+Makefile.unknown  s1-runtime.json  send.py
+backupp4          s2-runtime.json  set_mac_addresses.py
+int_ecmp.p4       s3-runtime.json  test.txt
+tiwary@Tiwary-QE73456K:~/p4codes$ echo Makefile && cat Makefile && echo "all sn json file" && cat s1-runtime.json  && cat s2-runtime.json  && cat s3-runtime.json && cat s4-runtime.json && echo receiver && cat receive.py  && echo send && cat send.py && echo p4 && cat int_ecmp.p4 && echo mac && cat set_mac_addresses.py && echo topology.json && cat topology.json
+Makefile
+BMV2_SWITCH_EXE=simple_switch_grpc
+
+
+include ../../utils/Makefile
+all sn json file
+{
+  "target": "bmv2",
+  "p4info": "build/int_ecmp.p4.p4info.txtpb",
+    "bmv2_json": "build/int_ecmp.json",
+    "register_entries":[
+        {
+            "register":"MyIngress.switch_id_reg",
+            "index":0,
+            "value":1
+        }
+    ],
+
+    "table_entries": [
+        {
+            "table":"MyIngress.mac_rewrite",
+            "match":{
+                "standard_metadata.egress_spec":2},
+            "action_name":"MyIngress.rewrite_mac",
+            "action_params":{
+                "dst":"aa:bb:cc:00:02:01",
+                "src":"aa:bb:cc:00:01:02"
+            }
+
+        },{
+            "table":"MyIngress.mac_rewrite",
+            "match":{
+                "standard_metadata.egress_spec":3},
+            "action_name":"MyIngress.rewrite_mac",
+            "action_params":{
+                "dst":"aa:bb:cc:00:03:01",
+                "src":"aa:bb:cc:00:01:03"
+            }
+
+        },
+    {
+      "table": "MyIngress.ecmp_group_table",
+        "match":{
+            "hdr.ipv4.dstAddr":["10.0.2.2",32]
+        },
+        "action_name": "MyIngress.set_group",
+        "action_params": {
+                "gid":1
+            }
+
+    },
+    {
+      "table": "MyIngress.ecmp_select_table",
+      "match": {
+          "meta.group_id":1,
+          "meta.hash":0
+      },
+      "action_name": "MyIngress.set_port",
+      "action_params": {
+        "port": 2
+      }
+    },
+      {
+      "table": "MyIngress.ecmp_select_table",
+      "match": {
+          "meta.group_id":1,
+          "meta.hash":1
+      },
+      "action_name": "MyIngress.set_port",
+      "action_params": {
+        "port": 3
+      }
+    },
+    {
+      "table": "MyIngress.int_table",
+      "match": {
+        "hdr.ipv4.dstAddr": ["10.0.2.2", 32]
+      },
+      "action_name": "MyIngress.enable_int",
+        "action_params": {}
+    }
+  ]
+}
+{
+  "target": "bmv2",
+  "p4info": "build/int_ecmp.p4.p4info.txtpb",
+    "bmv2_json": "build/int_ecmp.json",
+    "register_entries":[
+        {
+            "register":"MyIngress.switch_id_reg",
+            "index":0,
+            "value":2
+        }
+    ],
+
+  "table_entries": [
+    {
+      "table": "MyIngress.ecmp_group_table",
+        "match":{
+            "hdr.ipv4.dstAddr":["10.0.2.2",32]
+        },
+        "action_name": "MyIngress.set_group",
+        "action_params": {
+                "gid":1
+            }
+
+    },
+    {
+      "table": "MyIngress.ecmp_select_table",
+      "match": {
+          "meta.group_id":1,
+          "meta.hash":0
+      },
+      "action_name": "MyIngress.set_port",
+      "action_params": {
+        "port": 2
+      }
+    },
+      {
+      "table": "MyIngress.ecmp_select_table",
+      "match": {
+          "meta.group_id":1,
+          "meta.hash":1
+      },
+      "action_name": "MyIngress.set_port",
+      "action_params": {
+        "port": 2
+      }
+      },
+      {
+      "table": "MyIngress.int_table",
+      "match": {
+          "hdr.ipv4.dstAddr":["10.0.2.2",32]
+      },
+      "action_name": "MyIngress.enable_int",
+      "action_params": {
+
+      }
+    },
+    {
+        "table": "MyIngress.mac_rewrite",
+      "match": {
+        "standard_metadata.egress_spec": 2
+      },
+      "action_name": "MyIngress.rewrite_mac",
+        "action_params": {
+            "dst":"aa:bb:cc:00:04:02",
+            "src":"aa:bb:cc:00:02:02"
+
+        }
+    }
+  ]
+}
+{
+  "target": "bmv2",
+  "p4info": "build/int_ecmp.p4.p4info.txtpb",
+    "bmv2_json": "build/int_ecmp.json",
+    "register_entries":[
+        {
+            "register":"MyIngress.switch_id_reg",
+            "index":0,
+            "value":3
+        }
+    ],
+
+  "table_entries": [
+    {
+      "table": "MyIngress.ecmp_group_table",
+        "match":{
+            "hdr.ipv4.dstAddr":["10.0.2.2",32]
+        },
+        "action_name": "MyIngress.set_group",
+        "action_params": {
+                "gid":1
+            }
+
+    },
+    {
+      "table": "MyIngress.ecmp_select_table",
+      "match": {
+          "meta.group_id":1,
+          "meta.hash":0
+      },
+      "action_name": "MyIngress.set_port",
+      "action_params": {
+        "port": 2
+      }
+    },
+      {
+      "table": "MyIngress.ecmp_select_table",
+      "match": {
+          "meta.group_id":1,
+          "meta.hash":1
+      },
+      "action_name": "MyIngress.set_port",
+      "action_params": {
+        "port": 2
+      }
+      },
+      {
+      "table": "MyIngress.mac_rewrite",
+      "match": {
+        "standard_metadata.egress_spec": 2
+      },
+      "action_name": "MyIngress.rewrite_mac",
+          "action_params": {
+              "dst":"aa:bb:cc:00:04:03",
+              "src":"aa:bb:cc:00:03:02"
+          }
+      },
+
+      {
+      "table": "MyIngress.int_table",
+      "match": {
+        "hdr.ipv4.dstAddr": ["10.0.2.2", 32]
+      },
+      "action_name": "MyIngress.enable_int",
+        "action_params": {}
+    }
+  ]
+}
+{
+  "target": "bmv2",
+  "p4info": "build/int_ecmp.p4.p4info.txtpb",
+    "bmv2_json": "build/int_ecmp.json",
+    "register_entries":[
+        {
+            "register":"MyIngress.switch_id_reg",
+            "index":0,
+            "value":4
+        }
+    ],
+
+  "table_entries": [
+    {
+      "table": "MyIngress.ecmp_group_table",
+        "match":{
+            "hdr.ipv4.dstAddr":["10.0.2.2",32]
+        },
+        "action_name": "MyIngress.set_group",
+        "action_params": {
+                "gid":1
+            }
+
+    },
+    {
+      "table": "MyIngress.ecmp_select_table",
+      "match": {
+          "meta.group_id":1,
+          "meta.hash":0
+      },
+      "action_name": "MyIngress.set_port",
+      "action_params": {
+        "port": 1
+      }
+    },
+      {
+      "table": "MyIngress.ecmp_select_table",
+      "match": {
+          "meta.group_id":1,
+          "meta.hash":1
+      },
+      "action_name": "MyIngress.set_port",
+      "action_params": {
+        "port": 1
+      }
+    },
+    {
+      "table": "MyIngress.int_table",
+      "match": {
+        "hdr.ipv4.dstAddr": ["10.0.2.2", 32]
+      },
+      "action_name": "MyIngress.enable_int",
+        "action_params": {}
+    },
+      {
+      "table": "MyIngress.mac_rewrite",
+      "match": {
+        "standard_metadata.egress_spec":1
+      },
+      "action_name": "MyIngress.rewrite_mac",
+          "action_params": {
+              "dst":"08:00:00:00:02:00",
+              "src":"aa:bb:cc:00:04:01"
+          }
+    }
+  ]
+}
+receiver
+#!/usr/bin/env python3
+import os
+import sys
+
+from scapy.all import get_if_list, TCP,IP,sniff,  Ether
+
+
+
+def get_if():
+    iface=None
+    for i in get_if_list():
+        if "eth0" in i:
+            iface=i
+            break;
+    if not iface:
+        print("Cannot find eth0 interface")
+        exit(1)
+    return iface
+
+def parse_int(pkt):
+    if Ether not in pkt or IP not in pkt:
+        return
+    raw=bytes(pkt)
+    eth_len=14
+    ihl=(raw[14]&0x0F)*4
+    int_off=eth_len+ihl
+
+    if len(raw)<int_off+6:
+        return
+    int_hdr=raw[int_off:int_off+6]
+    hop_count=int_hdr[0]
+    switch_id=int_hdr[1]
+    ts= int.from_bytes(int_hdr[2:],"big")
+    print(f"INT -> hop_count={hop_count}, switch_id={switch_id}, ts={ts}")
+
+
+
+def main():
+    iface=get_if()
+
+    print("sniffing on %s" % iface)
+
+    sniff(iface = iface,prn = parse_int)
+
+if __name__ == '__main__':
+    main()
+send
+#!/usr/bin/env python3
+import random
+import socket
+import sys
+
+from scapy.all import IP,Raw, TCP, Ether, get_if_hwaddr, get_if_list, sendp
+
+
+def get_if():
+    ifs=get_if_list()
+    iface=None # "h1-eth0"
+    for i in get_if_list():
+        if "eth0" in i:
+            iface=i
+            break;
+    if not iface:
+        print("Cannot find eth0 interface")
+        exit(1)
+    return iface
+
+def main():
+
+    if len(sys.argv)<2:
+        print('pass 2 arguments: <destination> <message>')
+        exit(1)
+    dst_ip=sys.argv[1]
+    count=int(sys.argv[2]) if len(sys.argv) > 2 else 1
+    iface = get_if()
+    src_mac=get_if_hwaddr(iface)
+
+    pkt=(
+          Ether(src=src_mac, dst='ff:ff:ff:ff:ff:ff')/
+        IP(dst=dst_ip)/
+        TCP(dport=1234,sport=1234)/
+        Raw(load=b"HELLO_INT")
+        )
+    print(f"sending {count} pkts to {dst_ip} on {iface}" )
+    pkt.show2()
+    sendp(pkt,iface=iface,count=count,inter=0.5,verbose=False)
+
+
+
+if __name__ == '__main__':
+    main()
+p4
+/* -*- P4_16 -*- */
+#include <core.p4>
+#include <v1model.p4>
+
+const bit<16> TYPE_IPV4 = 0x800;
+
+/*************************************************************************
+*********************** H E A D E R S  ***********************************
+*************************************************************************/
+typedef bit<48> macAddr_t;
+typedef bit<32> ip4Addr_t;
+
+header ethernet_t {
+    macAddr_t dstAddr;
+    macAddr_t srcAddr;
+    bit<16>   etherType;
+}
+
+header ipv4_t {
+    bit<4>    version;
+    bit<4>    ihl;
+    bit<8>    diffserv;
+    bit<16>   totalLen;
+    bit<16>   identification;
+    bit<3>    flags;
+    bit<13>   fragOffset;
+    bit<8>    ttl;
+    bit<8>    protocol;
+    bit<16>   hdrChecksum;
+    ip4Addr_t srcAddr;
+    ip4Addr_t dstAddr;
+}
+header int_t{
+    bit<8> hop_count;
+    bit<8>  switch_id;
+    bit<48> ingress_timestamp;
+}
+
+struct metadata {
+    bit<8> group_id;
+    bit<1> hash;
+    bit<1> do_int;
+    bit<8> switch_id;
+}
+
+struct headers {
+    ethernet_t   ethernet;
+    ipv4_t       ipv4;
+    int_t inst;
+}
+
+register<bit<8>>(1)switch_id_reg;
+
+
+/*************************************************************************
+*********************** P A R S E R  ***********************************
+*************************************************************************/
+
+parser MyParser(packet_in packet,
+                out headers hdr,
+                inout metadata meta,
+                inout standard_metadata_t standard_metadata) {
+
+    state start {
+        transition parse_ethernet;
+    }
+
+    state parse_ethernet {
+        packet.extract(hdr.ethernet);
+        transition select(hdr.ethernet.etherType) {
+            TYPE_IPV4: parse_ipv4;
+            default: accept;
+        }
+    }
+
+    state parse_ipv4 {
+        packet.extract(hdr.ipv4);
+        transition accept;
+    }
+
+}
+control MyVerifyChecksum(inout headers hdr, inout metadata meta){
+    apply{}
+    }
+control MyIngress(inout headers hdr,
+                  inout metadata meta,
+                  inout standard_metadata_t standard_metadata) {
+
+    action load_switch_id(){
+        switch_id_reg.read(meta.switch_id,0);
+    }
+
+    action set_group(bit<8> gid){
+        meta.group_id=gid;
+    }
+
+    action compute_hash(){
+        bit<32> hv=(hdr.ipv4.srcAddr^hdr.ipv4.dstAddr);
+        meta.hash=(bit<1>)(hv&1);
+    }
+    action set_port(bit<9> port)
+    {
+        standard_metadata.egress_spec=port;
+    }
+    action enable_int()
+    {
+        meta.do_int=1;
+    }
+    action rewrite_mac(bit<48>dst,bit<48>src)
+    {
+        hdr.ethernet.dstAddr=dst;
+        hdr.ethernet.srcAddr=src;
+    }
+
+    table ecmp_group_table{
+        key={
+            hdr.ipv4.dstAddr:lpm;
+        }
+        actions={set_group;}
+        size=1024;
+    }
+    table ecmp_select_table{
+        key={
+            meta.group_id:exact;
+            meta.hash:exact;
+        }
+        actions={set_port;}
+        size=1024;
+    }
+    table int_table{
+        key={hdr.ipv4.dstAddr:lpm;}
+        actions={enable_int;}
+        size=1024;
+    }
+    table mac_rewrite{
+        key={standard_metadata.egress_spec:exact;}
+        actions={rewrite_mac;}
+        size=16;
+    }
+
+
+
+    apply {
+
+        load_switch_id();
+        if (hdr.ipv4.isValid()) {
+            ecmp_group_table.apply();
+            compute_hash();
+            ecmp_select_table.apply();
+            mac_rewrite.apply();
+            int_table.apply();
+            if(meta.do_int==1){
+                hdr.inst.setValid();
+                hdr.inst.hop_count=hdr.inst.hop_count+1;
+                hdr.inst.switch_id=meta.switch_id;
+                hdr.inst.ingress_timestamp=standard_metadata.ingress_global_timestamp;
+            }
+
+        }
+    }
+}
+
+/*************************************************************************
+****************  E G R E S S   P R O C E S S I N G   *******************
+*************************************************************************/
+
+control MyEgress(inout headers hdr,
+                 inout metadata meta,
+                 inout standard_metadata_t standard_metadata) {
+    apply {  }
+}
+
+/*************************************************************************
+*************   C H E C K S U M    C O M P U T A T I O N   **************
+*************************************************************************/
+
+control MyComputeChecksum(inout headers  hdr, inout metadata meta) {
+     apply {
+        update_checksum(
+        hdr.ipv4.isValid(),
+            { hdr.ipv4.version,
+              hdr.ipv4.ihl,
+              hdr.ipv4.diffserv,
+              hdr.ipv4.totalLen,
+              hdr.ipv4.identification,
+              hdr.ipv4.flags,
+              hdr.ipv4.fragOffset,
+              hdr.ipv4.ttl,
+              hdr.ipv4.protocol,
+              hdr.ipv4.srcAddr,
+              hdr.ipv4.dstAddr },
+            hdr.ipv4.hdrChecksum,
+            HashAlgorithm.csum16);
+    }
+}
+
+/*************************************************************************
+***********************  D E P A R S E R  *******************************
+*************************************************************************/
+
+control MyDeparser(packet_out packet, in headers hdr) {
+    apply {
+        packet.emit(hdr.ethernet);
+        packet.emit(hdr.ipv4);
+        packet.emit(hdr.inst);
+
+    }
+}
+
+/*************************************************************************
+***********************  S W I T C H  *******************************
+*************************************************************************/
+
+V1Switch(
+    MyParser(),
+    MyVerifyChecksum(),
+MyIngress(),
+MyEgress(),
+MyComputeChecksum(),
+MyDeparser()
+) main;
+mac
+
+def fix_mac_addresses(net):
+    switches=['s1','s2','s3','s4']
+    mac_map={
+        's1':['aa:bb:cc:00:01:01','aa:bb:cc:00:01:02','aa:bb:cc:00:01:03'],
+        's2':['aa:bb:cc:00:02:01','aa:bb:cc:00:02:02'],
+        's3':['aa:bb:cc:00:03:01','aa:bb:cc:00:03:02'],
+        's4':['aa:bb:cc:00:04:01','aa:bb:cc:00:04:02','aa:bb:cc:00:04:03']
+        }
+    for sw in switches:
+        switch=net.get(sw)
+        eth_idx=1
+        for mac in mac_map[sw]:
+            iface=f"{sw}-eth{eth_idx}"
+            print(f"Setting{iface}->{mac}")
+            switch.cmd(f"ifconfig {iface} hw ether {mac}")
+            eth_idx+=1
+topology.json
+{
+    "hosts": {
+        "h1": {
+            "ip": "10.0.1.1/24",
+            "mac": "08:00:00:00:01:11",
+            "commands":[
+                "route add default gw 10.0.1.10 dev eth0",
+                "arp -i eth0 -s 10.0.1.10 08:00:00:00:01:00"
+                ]
+        },
+        "h2": {
+            "ip": "10.0.2.2/24",
+            "mac": "08:00:00:00:02:22",
+            "commands":[
+                "route add default gw 10.0.2.20 dev eth0",
+                "arp -i eth0 -s 10.0.2.20 08:00:00:00:02:00"
+                ]
+        }
+    },
+    "switches": {
+        "s1": {
+
+            "runtime_json":"s1-runtime.json"},
+        "s2": {
+
+            "runtime_json":"s2-runtime.json"},
+        "s3": {
+
+            "runtime_json":"s3-runtime.json"},
+        "s4": {
+
+            "runtime_json":"s4-runtime.json"}
+    },
+    "links": [
+        [
+            "h1",
+            "s1-p1"
+        ],
+        [
+            "s1-p2",
+            "s2-p1"
+        ],
+        [
+            "s1-p3",
+            "s3-p1"
+        ],
+        [
+            "s2-p2",
+            "s4-p2"
+        ],
+        [
+            "h2",
+            "s4-p1"
+        ],
+        [
+            "s4-p3",
+            "s3-p2"
+        ]
+    ]
+}
+
+tiwary@Tiwary-QE73456K:~/p4codes$

@@ -1,8 +1,10 @@
-/* -*- P4_16 -*- */
+/* Updated P4_16 program: proper INT parsing and cumulative hop_count */
 #include <core.p4>
 #include <v1model.p4>
 
 const bit<16> TYPE_IPV4 = 0x800;
+
+// Maximum ECMP group size (unchanged)
 
 /*************************************************************************
 *********************** H E A D E R S  ***********************************
@@ -30,37 +32,37 @@ header ipv4_t {
     ip4Addr_t srcAddr;
     ip4Addr_t dstAddr;
 }
-header int_t{
-    bit<8> hop_count;
-    bit<8>  switch_id;    
+
+// Single INT header
+header int_t {
+    bit<8>  hop_count;
+    bit<8>  switch_id;
     bit<48> ingress_timestamp;
+}
+
+struct headers {
+    ethernet_t ethernet;
+    ipv4_t     ipv4;
+    int_t      inst;
 }
 
 struct metadata {
     bit<8> group_id;
     bit<1> hash;
-    bit<1> do_int;   
+    bit<1> do_int;
     bit<8> switch_id;
 }
 
-struct headers {
-    ethernet_t   ethernet;
-    ipv4_t       ipv4;
-    int_t inst;
-}
-
-register<bit<8>>(1)switch_id_reg;
-
+// Register to store each switch's constant ID
+register<bit<8>>(1) switch_id_reg;
 
 /*************************************************************************
 *********************** P A R S E R  ***********************************
 *************************************************************************/
-
 parser MyParser(packet_in packet,
                 out headers hdr,
                 inout metadata meta,
                 inout standard_metadata_t standard_metadata) {
-
     state start {
         transition parse_ethernet;
     }
@@ -75,147 +77,164 @@ parser MyParser(packet_in packet,
 
     state parse_ipv4 {
         packet.extract(hdr.ipv4);
-        transition accept;
+        transition parse_int;
     }
 
-}
-control MyVerifyChecksum(inout headers hdr, inout metadata meta){
-    apply{}
+    // Now extract any existing INT header (from upstream switch)
+    state parse_int {
+        packet.extract(hdr.inst);
+        transition accept;
     }
+}
+
+/*************************************************************************
+*********************** VERIFY  CHECKSUM  *******************************
+*************************************************************************/
+control MyVerifyChecksum(inout headers hdr, inout metadata meta) {
+    apply { }
+}
+
+/*************************************************************************
+***********************  I N G R E S S  *********************************
+*************************************************************************/
 control MyIngress(inout headers hdr,
                   inout metadata meta,
                   inout standard_metadata_t standard_metadata) {
 
-    action load_switch_id(){
-	switch_id_reg.read(meta.switch_id,0);
-    }
-    
-    action set_group(bit<8> gid){
-	meta.group_id=gid;
+    // Load this switch's ID from register
+    action load_switch_id() {
+        switch_id_reg.read(meta.switch_id, 0);
     }
 
-    action compute_hash(){
-	bit<32> hv=(hdr.ipv4.srcAddr^hdr.ipv4.dstAddr);
-	meta.hash=(bit<1>)(hv&1);
+    // ECMP grouping & selection
+    action set_group(bit<8> gid) {
+        meta.group_id = gid;
     }
-    action set_port(bit<9> port)
-    {
-	standard_metadata.egress_spec=port;
+    action compute_hash() {
+        bit<32> hv = hdr.ipv4.srcAddr ^ hdr.ipv4.dstAddr;
+        meta.hash = (bit<1>)(hv & 1);
     }
-    action enable_int()
-    {
-	meta.do_int=1;
+    action set_port(bit<9> port) {
+        standard_metadata.egress_spec = port;
     }
-    action rewrite_mac(bit<48>dst,bit<48>src)
-    {
-	hdr.ethernet.dstAddr=dst;
-	hdr.ethernet.srcAddr=src;
-    }
-    
-    table ecmp_group_table{
-	key={
-	    hdr.ipv4.dstAddr:lpm;
-	}
-	actions={set_group;}
-	size=1024;
-    }
-    table ecmp_select_table{
-	key={
-	    meta.group_id:exact;
-	    meta.hash:exact;
-	}
-	actions={set_port;}
-	size=1024;
-    }
-    table int_table{
-	key={hdr.ipv4.dstAddr:lpm;}
-	actions={enable_int;}
-	size=1024;
-    }
-    table mac_rewrite{
-	key={standard_metadata.egress_spec:exact;}
-	actions={rewrite_mac;}
-	size=16;
-    }
-    
 
-    
+    // Enable INT on this packet
+    action enable_int() {
+        meta.do_int = 1;
+    }
+
+    // Rewrite MACs for forwarding
+    action rewrite_mac(macAddr_t dst, macAddr_t src) {
+        hdr.ethernet.dstAddr = dst;
+        hdr.ethernet.srcAddr = src;
+    }
+
+    table ecmp_group_table {
+        key = { hdr.ipv4.dstAddr: lpm; }
+        actions = { set_group; }
+        size = 1024;
+    }
+
+    table ecmp_select_table {
+        key = {
+            meta.group_id: exact;
+            meta.hash:     exact;
+        }
+        actions = { set_port; }
+        size = 1024;
+    }
+
+    table int_table {
+        key = { hdr.ipv4.dstAddr: lpm; }
+        actions = { enable_int; }
+        size = 1024;
+    }
+
+    table mac_rewrite {
+        key = { standard_metadata.egress_spec: exact; }
+        actions = { rewrite_mac; }
+        size = 16;
+    }
+
     apply {
-	
-	load_switch_id();
-        if (hdr.ipv4.isValid()) {
-            ecmp_group_table.apply();
-	    compute_hash();
-	    ecmp_select_table.apply();
-	    mac_rewrite.apply();
-	    int_table.apply();
-	    if(meta.do_int==1){
-		hdr.inst.setValid();
-		hdr.inst.hop_count=hdr.inst.hop_count+1;
-		hdr.inst.switch_id=meta.switch_id;
-		hdr.inst.ingress_timestamp=standard_metadata.ingress_global_timestamp;
-	    }
+        // Always load our static switch ID
+        load_switch_id();
 
+        if (hdr.ipv4.isValid()) {
+            // ECMP setup
+            ecmp_group_table.apply();
+            compute_hash();
+            ecmp_select_table.apply();
+            mac_rewrite.apply();
+
+            // Enable INT if matched
+            int_table.apply();
+
+            if (meta.do_int == 1) {
+                // Set valid or increment existing INT header
+                hdr.inst.setValid();
+                hdr.inst.hop_count = hdr.inst.hop_count + 1;
+                hdr.inst.switch_id = meta.switch_id;
+                hdr.inst.ingress_timestamp = standard_metadata.ingress_global_timestamp;
+            }
         }
     }
 }
 
 /*************************************************************************
-****************  E G R E S S   P R O C E S S I N G   *******************
+***********************  E G R E S S  ***********************************
 *************************************************************************/
-
 control MyEgress(inout headers hdr,
                  inout metadata meta,
                  inout standard_metadata_t standard_metadata) {
-    apply {  }
+    apply { }
 }
 
 /*************************************************************************
-*************   C H E C K S U M    C O M P U T A T I O N   **************
+***********************  CHECKSUM **************************************
 *************************************************************************/
-
-control MyComputeChecksum(inout headers  hdr, inout metadata meta) {
-     apply {
+control MyComputeChecksum(inout headers hdr, inout metadata meta) {
+    apply {
         update_checksum(
-        hdr.ipv4.isValid(),
-            { hdr.ipv4.version,
-              hdr.ipv4.ihl,
-              hdr.ipv4.diffserv,
-              hdr.ipv4.totalLen,
-              hdr.ipv4.identification,
-              hdr.ipv4.flags,
-              hdr.ipv4.fragOffset,
-              hdr.ipv4.ttl,
-              hdr.ipv4.protocol,
-              hdr.ipv4.srcAddr,
-              hdr.ipv4.dstAddr },
+            hdr.ipv4.isValid(),
+            {
+                hdr.ipv4.version,
+                hdr.ipv4.ihl,
+                hdr.ipv4.diffserv,
+                hdr.ipv4.totalLen,
+                hdr.ipv4.identification,
+                hdr.ipv4.flags,
+                hdr.ipv4.fragOffset,
+                hdr.ipv4.ttl,
+                hdr.ipv4.protocol,
+                hdr.ipv4.srcAddr,
+                hdr.ipv4.dstAddr
+            },
             hdr.ipv4.hdrChecksum,
-            HashAlgorithm.csum16);
+            HashAlgorithm.csum16
+        );
     }
 }
 
 /*************************************************************************
-***********************  D E P A R S E R  *******************************
+***********************  DEPARSE  ***************************************
 *************************************************************************/
-
 control MyDeparser(packet_out packet, in headers hdr) {
     apply {
         packet.emit(hdr.ethernet);
         packet.emit(hdr.ipv4);
-	packet.emit(hdr.inst);
-	
+        packet.emit(hdr.inst);
     }
 }
 
 /*************************************************************************
-***********************  S W I T C H  *******************************
+************************  MAIN SWITCH **********************************
 *************************************************************************/
-
 V1Switch(
     MyParser(),
     MyVerifyChecksum(),
-MyIngress(),
-MyEgress(),
-MyComputeChecksum(),
-MyDeparser()
+    MyIngress(),
+    MyEgress(),
+    MyComputeChecksum(),
+    MyDeparser()
 ) main;
