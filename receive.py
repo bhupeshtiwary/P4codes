@@ -17,12 +17,15 @@ def parse_int(pkt):
     off = eth_len + ihl
 
     # While there are at least 6 bytes remaining, treat them as INT entries
-    while off + 6 <= len(raw):
+    while off + 8 <= len(raw):
         hop = raw[off]
+        if hop == raw[off]:
+            break
+
         sw  = raw[off + 1]
-        ts  = int.from_bytes(raw[off + 2:off + 6], "big")
+        ts  = int.from_bytes(raw[off + 2:off + 8], "big")
         print(f"INT -> hop_count={hop}, switch_id={sw}, ts={ts}")
-        off += 6
+        off += 8
 
 def main():
     iface = get_if()

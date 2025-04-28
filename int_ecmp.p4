@@ -103,6 +103,8 @@ control MyIngress(inout headers hdr,
         meta.switch_id   = id;
         hdr.ipv4.protocol = PROTO_INT;
         meta.next_idx    = 0;
+        hdr.ipv4.ihl         = hdr.ipv4.ihl + 2;     // each INT header is 8 bytes = 2 words
+        hdr.ipv4.totalLen    = hdr.ipv4.totalLen + 8; // grow total IPv4 length by 8 B
     }
 
     table ecmp_group_table {
