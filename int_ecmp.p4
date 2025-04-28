@@ -119,7 +119,6 @@ control MyIngress(inout headers hdr,
 
     apply {
         if (!hdr.ipv4.isValid()) return;
-        int_table.apply();
 
         // Step 1: Forward the packet first
         ecmp_group_table.apply();
